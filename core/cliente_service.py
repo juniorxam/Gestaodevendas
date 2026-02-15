@@ -19,28 +19,18 @@ class ClienteService:
     def cadastrar_individual(self, dados: Dict[str, Any], usuario_cadastro: str) -> Tuple[bool, str]:
         """
         Cadastra um cliente individual
-        
-        Args:
-            dados: Dicionário com os dados do cliente
-            usuario_cadastro: Login do usuário que está cadastrando
-            
-        Returns:
-            Tuple[bool, str]: (sucesso, mensagem)
         """
         try:
-            # Validar campos obrigatórios
             nome = str(dados.get("nome", "")).strip().upper()
             if not nome:
                 return False, "Nome é obrigatório"
 
-            # Validar CPF se informado
             cpf_limpo = None
             if dados.get("cpf"):
                 cpf_limpo = Security.clean_cpf(dados.get("cpf"))
                 if not Security.validar_cpf(cpf_limpo):
                     return False, "CPF inválido"
                 
-                # Verificar se CPF já existe
                 existe = self.db.fetchone(
                     "SELECT id FROM clientes WHERE cpf = ?",
                     (cpf_limpo,)
@@ -48,12 +38,11 @@ class ClienteService:
                 if existe:
                     return False, "CPF já cadastrado"
 
-            # Inserir cliente
             self.db.execute(
                 """
                 INSERT INTO clientes
-                (nome, cpf, email, telefone, data_nascimento, endereco, cidade, estado, cep, usuario_cadastro)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (nome, cpf, email, telefone, data_nascimento, endereco, cidade, estado, cep, usuario_cadastro, ativo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """,
                 (
                     nome,
@@ -80,16 +69,9 @@ class ClienteService:
         except Exception as e:
             return False, f"Erro ao cadastrar: {str(e)}"
 
-    def buscar_clientes(self, termo: str, limit: int = 10) -> pd.DataFrame:
+    def buscar_clientes(self, termo: str, limit: int = 10, incluir_inativos: bool = False) -> pd.DataFrame:
         """
         Busca clientes por nome, CPF ou email
-        
-        Args:
-            termo: Termo de busca
-            limit: Limite de resultados
-            
-        Returns:
-            DataFrame com os clientes encontrados
         """
         termo = (termo or "").strip()
         if not termo:
@@ -101,11 +83,12 @@ class ClienteService:
         query = """
             SELECT *
             FROM clientes
-            WHERE nome LIKE ?
-               OR email LIKE ?
-               OR telefone LIKE ?
+            WHERE (nome LIKE ? OR email LIKE ? OR telefone LIKE ?)
         """
         params = [like, like, like]
+        
+        if not incluir_inativos:
+            query += " AND ativo = 1"
         
         if cpf_limpo and len(cpf_limpo) > 3:
             query += " OR cpf LIKE ?"
@@ -119,12 +102,6 @@ class ClienteService:
     def obter_cliente_por_id(self, cliente_id: int) -> Optional[Dict[str, Any]]:
         """
         Obtém um cliente pelo ID
-        
-        Args:
-            cliente_id: ID do cliente
-            
-        Returns:
-            Dicionário com dados do cliente ou None
         """
         row = self.db.fetchone(
             "SELECT * FROM clientes WHERE id = ?",
@@ -135,19 +112,13 @@ class ClienteService:
     def obter_cliente_por_cpf(self, cpf: str) -> Optional[Dict[str, Any]]:
         """
         Obtém um cliente pelo CPF
-        
-        Args:
-            cpf: CPF do cliente
-            
-        Returns:
-            Dicionário com dados do cliente ou None
         """
         cpf_limpo = Security.clean_cpf(cpf)
         if not cpf_limpo:
             return None
             
         row = self.db.fetchone(
-            "SELECT * FROM clientes WHERE cpf = ?",
+            "SELECT * FROM clientes WHERE cpf = ? AND ativo = 1",
             (cpf_limpo,)
         )
         return dict(row) if row else None
@@ -155,26 +126,16 @@ class ClienteService:
     def atualizar_cliente(self, cliente_id: int, dados: Dict[str, Any], usuario: str) -> Tuple[bool, str]:
         """
         Atualiza dados de um cliente
-        
-        Args:
-            cliente_id: ID do cliente
-            dados: Dicionário com os novos dados
-            usuario: Login do usuário
-            
-        Returns:
-            Tuple[bool, str]: (sucesso, mensagem)
         """
         try:
-            # Verificar se cliente existe
             cliente = self.obter_cliente_por_id(cliente_id)
             if not cliente:
                 return False, "Cliente não encontrado"
 
-            # Construir query de atualização dinâmica
             campos = []
             params = []
             
-            campos_mapeamento = {
+            mapeamento = {
                 "nome": "nome",
                 "email": "email",
                 "telefone": "telefone",
@@ -182,10 +143,11 @@ class ClienteService:
                 "endereco": "endereco",
                 "cidade": "cidade",
                 "estado": "estado",
-                "cep": "cep"
+                "cep": "cep",
+                "ativo": "ativo"
             }
             
-            for campo_db, campo_dados in campos_mapeamento.items():
+            for campo_db, campo_dados in mapeamento.items():
                 if campo_dados in dados and dados[campo_dados] is not None:
                     valor = dados[campo_dados]
                     if campo_db == "nome":
@@ -194,6 +156,8 @@ class ClienteService:
                         valor = str(valor).lower().strip()
                     elif campo_db == "data_nascimento":
                         valor = Formatters.parse_date(valor).isoformat() if Formatters.parse_date(valor) else None
+                    elif campo_db == "ativo":
+                        valor = 1 if valor else 0
                     
                     campos.append(f"{campo_db} = ?")
                     params.append(valor)
@@ -218,16 +182,43 @@ class ClienteService:
         except Exception as e:
             return False, f"Erro ao atualizar: {str(e)}"
 
+    def excluir_cliente(self, cliente_id: int, usuario: str) -> Tuple[bool, str]:
+        """
+        Exclui logicamente um cliente (marca como inativo)
+        """
+        try:
+            cliente = self.obter_cliente_por_id(cliente_id)
+            if not cliente:
+                return False, "Cliente não encontrado."
+
+            vendas = self.db.fetchone(
+                "SELECT COUNT(*) as total FROM vendas WHERE cliente_id = ?",
+                (cliente_id,)
+            )
+            if vendas and vendas["total"] > 0:
+                return False, f"Não é possível excluir: cliente possui {vendas['total']} venda(s) vinculada(s)."
+
+            self.db.execute(
+                "UPDATE clientes SET ativo = 0 WHERE id = ?",
+                (cliente_id,)
+            )
+
+            self.audit.registrar(
+                usuario,
+                "CLIENTES",
+                "Excluiu cliente",
+                f"ID: {cliente_id} - {cliente['nome']}"
+            )
+
+            return True, "Cliente excluído com sucesso!"
+
+        except Exception as e:
+            return False, f"Erro ao excluir cliente: {str(e)}"
+
     @staticmethod
     def detectar_colunas_arquivo(df: pd.DataFrame) -> Dict[str, str]:
         """
         Detecta automaticamente as colunas em um arquivo de importação
-        
-        Args:
-            df: DataFrame com os dados
-            
-        Returns:
-            Dicionário mapeando campos do sistema para colunas do arquivo
         """
         m: Dict[str, str] = {}
         for col in df.columns:
@@ -266,18 +257,6 @@ class ClienteService:
     ) -> Tuple[Dict[str, int], List[str], List[Dict[str, Any]]]:
         """
         Importa clientes em lote a partir de um DataFrame
-        
-        Args:
-            df_raw: DataFrame com os dados
-            mapeamento_final: Mapeamento de colunas
-            acao_duplicados: Ação para registros duplicados
-            criar_novos: Se deve criar novos registros
-            atualizar_vazios: Se deve atualizar campos vazios
-            notificar_diferencas: Se deve notificar diferenças
-            usuario: Usuário que está importando
-            
-        Returns:
-            Tuple com estatísticas, erros e diferenças
         """
         stats = {"inseridos": 0, "atualizados": 0, "ignorados": 0, "erros": 0, "diferencas_detectadas": 0}
         erros: List[str] = []
@@ -296,14 +275,12 @@ class ClienteService:
         for col in stg.columns:
             stg[col] = stg[col].astype(str).str.strip()
 
-        # Filtrar linhas com nome válido
         mask_min = stg["NOME"].notna() & (stg["NOME"].str.upper().isin(["NAN", "NULL", "NONE"]) == False) & (stg["NOME"] != "")
         stg = stg[mask_min].copy()
         
         if stg.empty:
             return stats, ["Nenhuma linha com dados mínimos válidos."], diferencas
 
-        # Limpar CPF se existir
         if "CPF" in stg.columns:
             stg["CPF_LIMPO"] = stg["CPF"].map(Security.clean_cpf)
             stg["CPF_VALIDO"] = stg["CPF_LIMPO"].map(Security.validar_cpf)
@@ -315,14 +292,12 @@ class ClienteService:
 
         stg["NOME"] = stg["NOME"].astype(str).str.upper()
 
-        # Buscar clientes existentes
         existentes = self.db.read_sql(
-            "SELECT id, cpf, nome, email, telefone, endereco, cidade, estado, cep FROM clientes"
+            "SELECT id, cpf, nome, email, telefone, endereco, cidade, estado, cep, ativo FROM clientes"
         )
         if existentes.empty:
             existentes = pd.DataFrame(columns=["id", "cpf"])
 
-        # Verificar duplicatas por CPF
         if "CPF_LIMPO" in stg.columns:
             stg = stg.merge(
                 existentes[existentes['cpf'].notna()], 
@@ -345,7 +320,6 @@ class ClienteService:
             "CEP": "cep",
         }
 
-        # Processar atualizações
         update_rows = stg[stg["EXISTE"]].copy()
         updates: List[Tuple[str, List[Any]]] = []
         updated_count = 0
@@ -396,7 +370,6 @@ class ClienteService:
                     updates.append((q, params))
                     updated_count += 1
 
-        # Processar inserções
         insert_rows = stg[~stg["EXISTE"]].copy()
         inserts_params: List[Tuple[Any, ...]] = []
 
@@ -434,7 +407,6 @@ class ClienteService:
                         usuario,
                     ))
 
-        # Executar atualizações
         if updates:
             with self.db.connect() as conn:
                 for q, p in updates:
@@ -444,14 +416,13 @@ class ClienteService:
                         erros.append(f"Erro ao atualizar cliente {p[-1]}: {str(e)}")
                         stats["erros"] += 1
         
-        # Executar inserções
         if inserts_params:
             try:
                 self.db.executemany(
                     """
                     INSERT INTO clientes
-                    (nome, cpf, email, telefone, data_nascimento, endereco, cidade, estado, cep, usuario_cadastro)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (nome, cpf, email, telefone, data_nascimento, endereco, cidade, estado, cep, usuario_cadastro, ativo)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                     """,
                     inserts_params,
                 )
@@ -465,8 +436,8 @@ class ClienteService:
                             conn.execute(
                                 """
                                 INSERT INTO clientes
-                                (nome, cpf, email, telefone, data_nascimento, endereco, cidade, estado, cep, usuario_cadastro)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                (nome, cpf, email, telefone, data_nascimento, endereco, cidade, estado, cep, usuario_cadastro, ativo)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                                 """,
                                 params,
                             )
@@ -490,16 +461,15 @@ class ClienteService:
     def get_estatisticas(self) -> Dict[str, Any]:
         """
         Retorna estatísticas de clientes
-        
-        Returns:
-            Dicionário com estatísticas
         """
         total = self.db.fetchone("SELECT COUNT(*) as total FROM clientes")
+        ativos = self.db.fetchone("SELECT COUNT(*) as total FROM clientes WHERE ativo = 1")
         com_cpf = self.db.fetchone("SELECT COUNT(*) as total FROM clientes WHERE cpf IS NOT NULL")
         com_email = self.db.fetchone("SELECT COUNT(*) as total FROM clientes WHERE email IS NOT NULL")
         
         return {
             "total_clientes": int(total["total"]) if total else 0,
+            "clientes_ativos": int(ativos["total"]) if ativos else 0,
             "clientes_com_cpf": int(com_cpf["total"]) if com_cpf else 0,
             "clientes_com_email": int(com_email["total"]) if com_email else 0,
         }
