@@ -46,6 +46,12 @@ class ClientesPage:
 
         with tab4:
             self._render_analise_rfm()
+
+        if 'cliente_editar' in st.session_state:
+            self._render_editar_cliente(st.session_state.cliente_editar)
+
+        if 'cliente_excluir' in st.session_state:
+            self._render_modal_exclusao_cliente(st.session_state.cliente_excluir)
     
     def _render_consultar(self):
         """Renderiza consulta de clientes"""
@@ -61,6 +67,8 @@ class ClientesPage:
 
         with col3:
             filtro_cidade = st.text_input("Cidade:", key="filtro_cidade_cliente")
+
+        col_incluir = st.checkbox("Incluir clientes inativos", key="incluir_inativos")
 
         if st.button("🔎 Buscar"):
             where_clauses = []
@@ -79,95 +87,90 @@ class ClientesPage:
                 where_clauses.append("cidade LIKE ?")
                 params.append(f"%{filtro_cidade}%")
 
+            if not col_incluir:
+                where_clauses.append("ativo = 1")
+
             where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
             query = f"""
                 SELECT 
                     id, nome, cpf, email, telefone, 
-                    cidade, estado, data_nascimento, data_cadastro
+                    cidade, estado, data_nascimento, data_cadastro, ativo
                 FROM clientes
                 WHERE {where_sql}
                 ORDER BY nome
-                LIMIT 100
+                LIMIT 200
             """
 
             clientes = self.db.read_sql(query, params)
             st.session_state.clientes_filtrados = clientes
 
-        # Exibir resultados
         if st.session_state.get('clientes_filtrados') is not None:
             clientes = st.session_state.clientes_filtrados
 
             if not clientes.empty:
-                UIComponents.show_success_message(f"{len(clientes)} clientes encontrados")
+                st.success(f"{len(clientes)} clientes encontrados")
 
-                df_display = clientes.copy()
-                df_display['cpf'] = df_display['cpf'].apply(lambda x: Security.formatar_cpf(x) if x else "")
-                df_display['telefone'] = df_display['telefone'].apply(lambda x: Security.formatar_telefone(x) if x else "")
-                df_display['data_nascimento'] = df_display['data_nascimento'].apply(Formatters.formatar_data_br)
-                df_display['data_cadastro'] = pd.to_datetime(df_display['data_cadastro']).dt.strftime('%d/%m/%Y')
+                for idx, row in clientes.iterrows():
+                    col1, col2, col3, col4, col5, col6 = st.columns([2.5, 1, 1, 1, 1, 1])
+                    
+                    with col1:
+                        nome_display = row['nome']
+                        if row['ativo'] == 0:
+                            nome_display += " (inativo)"
+                        st.write(f"**{nome_display}**")
+                        st.caption(f"CPF: {Security.formatar_cpf(row['cpf']) if row['cpf'] else 'N/I'} | Tel: {row['telefone'] or 'N/I'}")
+                    
+                    with col2:
+                        st.write(f"Nasc: {Formatters.formatar_data_br(row['data_nascimento'])}")
+                    
+                    with col3:
+                        st.write(f"Cidade: {row['cidade'] or 'N/I'}")
+                    
+                    with col4:
+                        if st.button("✏️ Editar", key=f"edit_{row['id']}_{idx}"):
+                            st.session_state.cliente_editar = row.to_dict()
+                            st.rerun()
+                    
+                    with col5:
+                        if st.button("🗑️ Excluir", key=f"del_{row['id']}_{idx}"):
+                            st.session_state.cliente_excluir = row.to_dict()
+                            st.rerun()
+                    
+                    with col6:
+                        if st.button("📋 Detalhes", key=f"detail_{row['id']}_{idx}"):
+                            st.session_state.cliente_detalhe = row.to_dict()
+                            st.rerun()
+                    
+                    st.divider()
 
-                UIComponents.create_data_table(
-                    df_display,
-                    key="clientes_table",
-                    column_config={
-                        "id": "ID",
-                        "nome": "Nome",
-                        "cpf": "CPF",
-                        "email": "E-mail",
-                        "telefone": "Telefone",
-                        "cidade": "Cidade",
-                        "estado": "UF",
-                        "data_nascimento": "Nascimento",
-                        "data_cadastro": "Cadastro"
-                    }
-                )
-
-                # Botões de exportação
-                col_exp1, col_exp2, col_exp3 = st.columns([1, 1, 2])
-
+                col_exp1, col_exp2 = st.columns(2)
                 with col_exp1:
                     csv = clientes.to_csv(index=False)
-                    st.download_button(
-                        "📥 CSV",
-                        csv,
-                        "clientes.csv",
-                        "text/csv"
-                    )
-
+                    st.download_button("📥 CSV", csv, "clientes.csv", "text/csv")
                 with col_exp2:
                     excel_buffer = io.BytesIO()
                     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                         clientes.to_excel(writer, index=False, sheet_name='Clientes')
-
                     st.download_button(
                         "📊 Excel",
                         excel_buffer.getvalue(),
                         "clientes.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-
-                # Ver detalhes de um cliente
-                st.markdown("---")
-                st.subheader("📋 Detalhes do Cliente")
-                
-                cliente_selecionado = st.selectbox(
-                    "Selecione um cliente para ver detalhes:",
-                    options=clientes['nome'].tolist(),
-                    key="select_cliente_detalhe"
-                )
-                
-                if cliente_selecionado:
-                    cliente_data = clientes[clientes['nome'] == cliente_selecionado].iloc[0]
-                    self._render_cliente_detalhe(cliente_data)
             else:
-                UIComponents.show_info_message("Nenhum cliente encontrado com os filtros selecionados.")
-    
+                st.info("Nenhum cliente encontrado.")
+
+        if 'cliente_detalhe' in st.session_state:
+            self._render_cliente_detalhe(st.session_state.cliente_detalhe)
+
     def _render_cliente_detalhe(self, cliente):
         """Renderiza detalhes de um cliente específico"""
-        col_detalhe1, col_detalhe2 = st.columns(2)
-        
-        with col_detalhe1:
+        st.markdown("---")
+        st.subheader(f"📋 Detalhes do Cliente: {cliente['nome']}")
+
+        col1, col2 = st.columns(2)
+        with col1:
             st.markdown(f"""
             **ID:** {cliente['id']}
             **Nome:** {cliente['nome']}
@@ -175,24 +178,24 @@ class ClientesPage:
             **E-mail:** {cliente['email'] or 'Não informado'}
             **Telefone:** {Security.formatar_telefone(cliente['telefone']) if cliente['telefone'] else 'Não informado'}
             """)
-        
-        with col_detalhe2:
+        with col2:
             st.markdown(f"""
-            **Data Nascimento:** {cliente['data_nascimento'] or 'Não informado'}
+            **Data Nascimento:** {Formatters.formatar_data_br(cliente['data_nascimento'])}
             **Cidade/UF:** {cliente.get('cidade', '')}/{cliente.get('estado', '')}
-            **Data Cadastro:** {cliente['data_cadastro']}
+            **Data Cadastro:** {Formatters.formatar_data_br(cliente['data_cadastro'])}
+            **Status:** {'✅ Ativo' if cliente['ativo'] == 1 else '❌ Inativo'}
             """)
-        
-        # Histórico de compras
+
         if self.vendas:
             st.subheader("🛒 Histórico de Compras")
-            
             historico = self.vendas.historico_cliente(int(cliente['id']))
             
             if not historico.empty:
                 df_hist = historico.copy()
                 df_hist['data_venda'] = pd.to_datetime(df_hist['data_venda']).dt.strftime('%d/%m/%Y %H:%M')
-                df_hist['valor_total'] = df_hist['valor_total'].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                df_hist['valor_total'] = df_hist['valor_total'].apply(
+                    lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                )
                 
                 st.dataframe(
                     df_hist[['data_venda', 'valor_total', 'forma_pagamento', 'total_itens']],
@@ -205,14 +208,115 @@ class ClientesPage:
                     }
                 )
                 
-                # Totais
                 total_compras = len(historico)
                 total_gasto = historico['valor_total'].sum()
-                
-                st.info(f"**Total de compras:** {total_compras} | **Total gasto:** R$ {total_gasto:,.2f}")
+                st.info(f"**Total de compras:** {total_compras} | **Total gasto:** R$ {total_gasto:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
             else:
                 st.info("Cliente ainda não realizou compras.")
-    
+
+        if st.button("🔙 Voltar", key="back_from_detail"):
+            del st.session_state.cliente_detalhe
+            st.rerun()
+
+    def _render_editar_cliente(self, cliente):
+        """Renderiza formulário de edição de cliente"""
+        st.markdown("---")
+        st.subheader(f"✏️ Editando: {cliente['nome']}")
+
+        with st.form(f"form_editar_cliente_{cliente['id']}"):
+            col1, col2 = st.columns(2)
+            with col1:
+                nome = st.text_input("Nome*", value=cliente['nome'])
+                cpf = st.text_input("CPF", value=Security.formatar_cpf(cliente['cpf']) if cliente['cpf'] else "")
+                data_nasc = st.date_input(
+                    "Data de Nascimento",
+                    value=Formatters.parse_date(cliente['data_nascimento']) if cliente['data_nascimento'] else None,
+                    max_value=date.today()
+                )
+            with col2:
+                email = st.text_input("E-mail", value=cliente['email'] or "")
+                telefone = st.text_input("Telefone", value=cliente['telefone'] or "")
+
+            endereco = st.text_input("Endereço", value=cliente['endereco'] or "")
+            col3, col4, col5 = st.columns(3)
+            with col3:
+                cidade = st.text_input("Cidade", value=cliente['cidade'] or "")
+            with col4:
+                estado = st.text_input("Estado", value=cliente['estado'] or "", max_chars=2)
+            with col5:
+                cep = st.text_input("CEP", value=cliente['cep'] or "")
+
+            ativo = st.checkbox("Cliente Ativo", value=bool(cliente['ativo']))
+
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.form_submit_button("💾 Salvar Alterações", type="primary"):
+                    if not nome.strip():
+                        st.error("Nome é obrigatório")
+                        st.stop()
+                    
+                    dados = {
+                        "nome": nome.strip().upper(),
+                        "cpf": Security.clean_cpf(cpf) if cpf.strip() else None,
+                        "email": email.strip() or None,
+                        "telefone": telefone.strip() or None,
+                        "data_nascimento": data_nasc.isoformat() if data_nasc else None,
+                        "endereco": endereco.strip() or None,
+                        "cidade": cidade.strip().upper() or None,
+                        "estado": estado.strip().upper() or None,
+                        "cep": cep.strip() or None,
+                        "ativo": ativo
+                    }
+                    sucesso, msg = self.clientes.atualizar_cliente(
+                        int(cliente['id']), dados, st.session_state.usuario_nome
+                    )
+                    if sucesso:
+                        st.success(msg)
+                        del st.session_state.cliente_editar
+                        if 'clientes_filtrados' in st.session_state:
+                            del st.session_state.clientes_filtrados
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            with col_btn2:
+                if st.form_submit_button("Cancelar"):
+                    del st.session_state.cliente_editar
+                    st.rerun()
+
+    def _render_modal_exclusao_cliente(self, cliente):
+        """Renderiza modal de confirmação de exclusão"""
+        st.markdown("---")
+        st.error("⚠️ **CONFIRMAÇÃO DE EXCLUSÃO**")
+        st.markdown(f"""
+        <div style="background-color: #fff3cd; border:1px solid #ffeeba; border-radius:5px; padding:15px; margin:10px 0;">
+            <h4 style="color:#856404;">Tem certeza que deseja excluir este cliente?</h4>
+            <ul>
+                <li><strong>Nome:</strong> {cliente['nome']}</li>
+                <li><strong>CPF:</strong> {Security.formatar_cpf(cliente['cpf']) if cliente['cpf'] else 'N/I'}</li>
+            </ul>
+            <p style="color:#dc3545; font-weight:bold;">Esta ação é IRREVERSÍVEL e só será permitida se o cliente não tiver vendas.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Confirmar Exclusão", type="primary"):
+                sucesso, msg = self.clientes.excluir_cliente(
+                    int(cliente['id']), st.session_state.usuario_nome
+                )
+                if sucesso:
+                    st.success(msg)
+                    del st.session_state.cliente_excluir
+                    if 'clientes_filtrados' in st.session_state:
+                        del st.session_state.clientes_filtrados
+                    st.rerun()
+                else:
+                    st.error(msg)
+        with col2:
+            if st.button("❌ Cancelar"):
+                del st.session_state.cliente_excluir
+                st.rerun()
+
     def _render_cadastrar(self):
         """Renderiza cadastro individual"""
         st.subheader("➕ Cadastrar Novo Cliente")
@@ -311,7 +415,7 @@ class ClientesPage:
                     nome, cpf, email, telefone, data_nascimento,
                     endereco, cidade, estado, cep, submit_novo
                 )
-    
+
     def _processar_cadastro(self, nome, cpf, email, telefone, data_nascimento,
                            endereco, cidade, estado, cep, submit_novo):
         """Processa cadastro de cliente"""
@@ -348,7 +452,7 @@ class ClientesPage:
                 st.rerun()
         else:
             UIComponents.show_error_message(mensagem)
-    
+
     def _render_importar(self):
         """Renderiza importação em lote"""
         st.subheader("📥 Importar Clientes em Lote")
@@ -499,9 +603,9 @@ class ClientesPage:
 
             except Exception as e:
                 st.error(f"❌ Erro ao processar arquivo: {str(e)}")
-    
+
     def _render_analise_rfm(self):
-        """Renderiza análise RFM (Recência, Frequência, Valor)"""
+        """Renderiza análise RFM"""
         st.subheader("📊 Análise RFM de Clientes")
         
         st.info("""
@@ -517,7 +621,6 @@ class ClientesPage:
             st.warning("Serviço de vendas não disponível para análise RFM.")
             return
         
-        # Buscar dados para RFM
         query = """
             SELECT 
                 c.id,
@@ -532,6 +635,7 @@ class ClientesPage:
                 julianday('now') - julianday(MAX(v.data_venda)) as dias_ultima_compra
             FROM clientes c
             JOIN vendas v ON c.id = v.cliente_id
+            WHERE c.ativo = 1
             GROUP BY c.id
             ORDER BY valor_total DESC
         """
@@ -542,24 +646,16 @@ class ClientesPage:
             st.info("Nenhum dado disponível para análise RFM.")
             return
         
-        # Calcular scores RFM
-        # Recência: quanto menor dias_ultima_compra, melhor
         df_rfm['R_score'] = pd.qcut(df_rfm['dias_ultima_compra'], q=5, labels=[5,4,3,2,1], duplicates='drop')
-        
-        # Frequência: quanto maior, melhor
         df_rfm['F_score'] = pd.qcut(df_rfm['frequencia'], q=5, labels=[1,2,3,4,5], duplicates='drop')
-        
-        # Valor: quanto maior, melhor
         df_rfm['M_score'] = pd.qcut(df_rfm['valor_total'], q=5, labels=[1,2,3,4,5], duplicates='drop')
         
-        # Score total
         df_rfm['RFM_score'] = (
             df_rfm['R_score'].astype(int) + 
             df_rfm['F_score'].astype(int) + 
             df_rfm['M_score'].astype(int)
         )
         
-        # Classificar clientes
         def classificar_cliente(row):
             if row['RFM_score'] >= 13:
                 return '🏆 CAMPEÃO'
@@ -574,7 +670,6 @@ class ClientesPage:
         
         df_rfm['classificacao'] = df_rfm.apply(classificar_cliente, axis=1)
         
-        # Estatísticas
         col_rfm1, col_rfm2, col_rfm3, col_rfm4 = st.columns(4)
         
         with col_rfm1:
@@ -593,7 +688,6 @@ class ClientesPage:
             risco = len(df_rfm[df_rfm['classificacao'].isin(['⚠️ EM RISCO', '❌ INATIVO'])])
             st.metric("⚠️ Em Risco", risco)
         
-        # Tabela RFM
         st.subheader("📋 Análise Detalhada")
         
         df_display = df_rfm[['nome', 'classificacao', 'frequencia', 'valor_total', 'ultima_compra']].copy()
@@ -612,7 +706,6 @@ class ClientesPage:
             }
         )
         
-        # Sugestões de ação
         st.subheader("💡 Sugestões de Ação")
         
         col_sug1, col_sug2 = st.columns(2)
