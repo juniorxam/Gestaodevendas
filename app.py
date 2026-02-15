@@ -239,25 +239,86 @@ class ElectroGestApp:
             st.warning(f"Não foi possível injetar estilos: {str(e)}")
     
     def _render_sidebar(self):
-        """Renderiza menu lateral de navegação apenas para usuários logados"""
+        """Renderiza menu lateral de navegação apenas para usuários logados - NOVO DESIGN"""
         if not st.session_state.get('logado', False):
             return
         
         st.markdown("""
         <style>
+            [data-testid="stSidebar"] { display: block !important; }
+            
+            /* ESTILOS COMPACTOS DO MENU - IGUAL AO NASST */
             [data-testid="stSidebar"] {
-                display: block !important;
+                padding-top: 0.5rem !important;
+                width: 250px !important;
+            }
+            
+            [data-testid="stSidebar"] > div:first-child {
+                padding-top: 0.5rem !important;
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+            
+            [data-testid="stSidebar"] .stButton button {
+                margin-top: 0.1rem !important;
+                margin-bottom: 0.1rem !important;
+                padding-top: 0.25rem !important;
+                padding-bottom: 0.25rem !important;
+                font-size: 0.9rem !important;
+            }
+            
+            [data-testid="stSidebar"] h1 {
+                font-size: 1.3rem !important;
+                margin-top: 0 !important;
+                margin-bottom: 0.25rem !important;
+            }
+            
+            [data-testid="stSidebar"] h2 {
+                font-size: 1.1rem !important;
+                margin-top: 0.25rem !important;
+                margin-bottom: 0.25rem !important;
+            }
+            
+            [data-testid="stSidebar"] h3 {
+                font-size: 1rem !important;
+                margin-top: 0.15rem !important;
+                margin-bottom: 0.15rem !important;
+            }
+            
+            [data-testid="stSidebar"] p {
+                margin-top: 0.1rem !important;
+                margin-bottom: 0.1rem !important;
+                font-size: 0.9rem !important;
+            }
+            
+            [data-testid="stSidebar"] hr {
+                margin-top: 0.3rem !important;
+                margin-bottom: 0.3rem !important;
             }
         </style>
         """, unsafe_allow_html=True)
         
         with st.sidebar:
-            AccessibilityManager.create_high_contrast_toggle()
+            # Toggle de alto contraste
+            if 'high_contrast' not in st.session_state:
+                st.session_state.high_contrast = False
+            
+            col1, col2 = st.columns([1, 10])
+            with col1:
+                if st.button(
+                    "👁️" + (" (AC)" if st.session_state.high_contrast else ""),
+                    help="Alternar alto contraste",
+                    key="contrast_toggle"
+                ):
+                    st.session_state.high_contrast = not st.session_state.high_contrast
+                    st.rerun()
             
             st.markdown("---")
             
-            st.markdown("### 📍 Menu Principal")
+            # Título do menu
+            st.markdown("### 📍 Menu")
             
+            # Itens do menu principal
             menu_items = [
                 ("🏠 Dashboard", "dashboard"),
                 ("💰 Vendas", "vendas"),
@@ -268,33 +329,42 @@ class ElectroGestApp:
                 ("📋 Relatórios", "relatorios"),
             ]
             
+            # Itens para ADMIN/OPERADOR
             if st.session_state.get('nivel_acesso') in ["ADMIN", "OPERADOR"]:
-                menu_items.append(("📋 Gerenciar Vendas", "gerenciar_vendas"))
-                menu_items.append(("📈 Produtividade", "produtividade"))
+                menu_items.extend([
+                    ("📋 Gerenciar Vendas", "gerenciar_vendas"),
+                    ("📈 Produtividade", "produtividade"),
+                ])
             
+            # Itens apenas para ADMIN
             if st.session_state.get('nivel_acesso') == "ADMIN":
                 menu_items.extend([
                     ("📝 Logs", "logs"),
                     ("⚙️ Administração", "admin"),
                 ])
             
+            # Renderizar botões do menu
             for label, page in menu_items:
                 current_page = st.session_state.get('pagina_atual', 'login')
                 btn_type = "primary" if current_page == page else "secondary"
                 
-                if st.button(label, type=btn_type, key=f"nav_{page}"):
+                if st.button(label, use_container_width=True, type=btn_type, key=f"nav_{page}"):
                     st.session_state.pagina_atual = page
                     st.rerun()
             
+            # Separador
             st.markdown("---")
+            
+            # Informações do usuário
             st.markdown(f"**👤 {st.session_state.get('usuario_nome', 'Usuário')}**")
             st.markdown(f"🔑 {st.session_state.get('nivel_acesso', 'VISUALIZADOR')}")
             
-            if st.button("🔐 Alterar Minha Senha", type="secondary", key="btn_alterar_senha"):
+            # Botões de ações do usuário
+            if st.button("🔐 Alterar Minha Senha", use_container_width=True, type="secondary", key="btn_alterar_senha"):
                 st.session_state.pagina_atual = "alterar_senha"
                 st.rerun()
 
-            if st.button("🚪 Sair", type="secondary"):
+            if st.button("🚪 Sair", use_container_width=True, type="secondary"):
                 self._logout()
     
     def _logout(self):
