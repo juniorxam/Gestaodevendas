@@ -1,5 +1,5 @@
 """
-styles.py - Estilos CSS personalizados
+styles.py - Estilos CSS personalizados com design compacto
 """
 
 import streamlit as st
@@ -10,18 +10,148 @@ class Styles:
     
     @staticmethod
     def inject():
-        """Injeta CSS personalizado na aplicação"""
+        """Injeta CSS personalizado na aplicação com design compacto"""
         st.markdown("""
         <style>
-        /* Remove a cor de fundo padrão da sidebar */
-        [data-testid="stSidebar"] {
-            background-color: transparent !important;
-            border-right: 1px solid rgba(49, 51, 63, 0.1);
+        /* ===== REDUÇÃO DE ESPAÇAMENTO GLOBAL ===== */
+        
+        /* Reduzir padding do container principal */
+        .main .block-container {
+            padding-top: 0.5rem !important;
+            padding-bottom: 0.5rem !important;
+            padding-left: 1.5rem !important;
+            padding-right: 1.5rem !important;
+            max-width: 100% !important;
         }
         
-        /* Remove o background do conteúdo da sidebar */
+        /* Reduzir margem dos títulos */
+        h1 {
+            margin-top: 0.25rem !important;
+            margin-bottom: 0.25rem !important;
+            padding-top: 0 !important;
+            font-size: 2rem !important;
+        }
+        
+        h2 {
+            margin-top: 0.25rem !important;
+            margin-bottom: 0.25rem !important;
+            font-size: 1.5rem !important;
+        }
+        
+        h3 {
+            margin-top: 0.15rem !important;
+            margin-bottom: 0.15rem !important;
+        }
+        
+        /* Reduzir espaçamento de todos os elementos */
+        .stAlert, .stSuccess, .stError, .stWarning, .stInfo {
+            margin-top: 0.25rem !important;
+            margin-bottom: 0.25rem !important;
+            padding-top: 0.5rem !important;
+            padding-bottom: 0.5rem !important;
+        }
+        
+        /* Reduzir espaçamento de colunas */
+        .row-widget {
+            margin-top: 0.1rem !important;
+            margin-bottom: 0.1rem !important;
+        }
+        
+        .element-container {
+            margin-bottom: 0.1rem !important;
+        }
+        
+        /* Reduzir espaçamento de abas */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0.5rem !important;
+            margin-bottom: 0.25rem !important;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            padding-top: 0.25rem !important;
+            padding-bottom: 0.25rem !important;
+        }
+        
+        /* Reduzir espaçamento de botões */
+        .stButton button {
+            margin-top: 0 !important;
+            margin-bottom: 0.1rem !important;
+        }
+        
+        /* Reduzir espaçamento de inputs */
+        .stTextInput, .stSelectbox, .stDateInput, .stNumberInput {
+            margin-bottom: 0.25rem !important;
+        }
+        
+        /* Reduzir espaçamento de métricas */
+        .stMetric {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        
+        .stMetric label {
+            margin-top: 0 !important;
+        }
+        
+        .stMetric [data-testid="stMetricValue"] {
+            font-size: 1.8rem !important;
+        }
+        
+        /* Reduzir espaçamento de expanders */
+        .streamlit-expanderHeader {
+            padding-top: 0.25rem !important;
+            padding-bottom: 0.25rem !important;
+        }
+        
+        /* ===== SIDEBAR (MENU LATERAL) - DESIGN COMPACTO ===== */
+        
+        /* Estilos da sidebar compacta */
+        [data-testid="stSidebar"] {
+            padding-top: 0.5rem !important;
+            width: 250px !important;
+        }
+        
         [data-testid="stSidebar"] > div:first-child {
-            background-color: transparent !important;
+            padding-top: 0.5rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+        
+        [data-testid="stSidebar"] .stButton button {
+            margin-top: 0.1rem !important;
+            margin-bottom: 0.1rem !important;
+            padding-top: 0.25rem !important;
+            padding-bottom: 0.25rem !important;
+            font-size: 0.9rem !important;
+        }
+        
+        [data-testid="stSidebar"] h1 {
+            font-size: 1.3rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.25rem !important;
+        }
+        
+        [data-testid="stSidebar"] h2 {
+            font-size: 1.1rem !important;
+            margin-top: 0.25rem !important;
+            margin-bottom: 0.25rem !important;
+        }
+        
+        [data-testid="stSidebar"] h3 {
+            font-size: 1rem !important;
+            margin-top: 0.15rem !important;
+            margin-bottom: 0.15rem !important;
+        }
+        
+        [data-testid="stSidebar"] p {
+            margin-top: 0.1rem !important;
+            margin-bottom: 0.1rem !important;
+            font-size: 0.9rem !important;
+        }
+        
+        [data-testid="stSidebar"] hr {
+            margin-top: 0.3rem !important;
+            margin-bottom: 0.3rem !important;
         }
         
         /* Estilo para os botões da sidebar */
@@ -47,7 +177,8 @@ class Styles:
             background-color: rgba(49, 51, 63, 0.15);
         }
         
-        /* Cards de métricas */
+        /* ===== CARDS DE MÉTRICAS ===== */
+        
         .metric-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border-radius: 10px;
@@ -67,23 +198,23 @@ class Styles:
             opacity: 0.9;
         }
         
-        /* Estoque baixo - destaque vermelho */
+        /* ===== DESTAQUE PARA ESTOQUE BAIXO ===== */
         .estoque-baixo {
             background-color: #ffebee !important;
             color: #c62828 !important;
             font-weight: bold;
         }
         
-        /* Tabelas responsivas */
+        /* ===== TABELAS RESPONSIVAS ===== */
         .stDataFrame {
             width: 100%;
             overflow-x: auto;
         }
         
-        /* Breadcrumb */
+        /* ===== BREADCRUMB ===== */
         .breadcrumb {
-            padding: 10px 0;
-            margin-bottom: 20px;
+            padding: 0.2rem 0;
+            margin-bottom: 0.3rem;
             border-bottom: 1px solid #eee;
         }
         
@@ -98,7 +229,7 @@ class Styles:
             color: #999;
         }
         
-        /* Form steps */
+        /* ===== FORM STEPS ===== */
         .form-step {
             padding: 10px;
             margin: 5px 0;
@@ -116,7 +247,7 @@ class Styles:
             background-color: #e3f2fd;
         }
         
-        /* Hotkey hints */
+        /* ===== HOTKEY HINTS ===== */
         .hotkey-hint {
             background-color: #f0f0f0;
             border: 1px solid #ccc;
@@ -126,7 +257,7 @@ class Styles:
             color: #666;
         }
         
-        /* Tooltips */
+        /* ===== TOOLTIPS ===== */
         [data-tooltip] {
             position: relative;
             cursor: help;
@@ -155,19 +286,12 @@ class Styles:
             visibility: visible;
         }
         
-        /* Responsividade */
-        @media (max-width: 768px) {
-            .metric-card .metric-value {
-                font-size: 1.8em;
-            }
-            
-            .stButton button {
-                width: 100%;
-                margin: 5px 0;
-            }
+        /* ===== RODAPÉ ===== */
+        footer {
+            visibility: hidden !important;
         }
         
-        /* Tema escuro (prefers-color-scheme) */
+        /* ===== TEMA ESCURO (RESPONSIVO) ===== */
         @media (prefers-color-scheme: dark) {
             [data-testid="stSidebar"] .stButton button {
                 border-color: rgba(250, 250, 250, 0.2);
@@ -177,6 +301,11 @@ class Styles:
             [data-testid="stSidebar"] .stButton button:hover {
                 background-color: rgba(250, 250, 250, 0.05);
                 border-color: rgba(250, 250, 250, 0.3);
+            }
+            
+            [data-testid="stSidebar"] h1,
+            [data-testid="stSidebar"] p {
+                color: rgb(250, 250, 250);
             }
             
             .breadcrumb-item {
@@ -196,6 +325,18 @@ class Styles:
             .form-step.completed {
                 background-color: #1a3a4a;
                 border-left-color: #2196F3;
+            }
+        }
+        
+        /* ===== RESPONSIVIDADE ===== */
+        @media (max-width: 768px) {
+            .metric-card .metric-value {
+                font-size: 1.8em;
+            }
+            
+            .stButton button {
+                width: 100%;
+                margin: 5px 0;
             }
         }
         </style>
