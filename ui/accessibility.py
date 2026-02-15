@@ -125,3 +125,20 @@ class AccessibilityManager:
             }
             </style>
             """, unsafe_allow_html=True)
+
+    @staticmethod
+    def announce_message(message: str):
+        """
+        Anuncia uma mensagem para leitores de tela (acessibilidade).
+        
+        Args:
+            message: Mensagem a ser anunciada
+        """
+        # Feedback visual (toast) para todos os usuários
+        st.toast(message)
+        
+        # Região ARIA live oculta para leitores de tela
+        st.markdown(
+            f'<div aria-live="polite" style="position: absolute; width: 1px; height: 1px; overflow: hidden;">{message}</div>',
+            unsafe_allow_html=True
+        )
