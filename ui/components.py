@@ -2,7 +2,7 @@
 components.py - Componentes reutilizáveis da UI
 """
 
-from typing import Any, List, Optional, Tuple, Callable
+from typing import *
 
 import pandas as pd
 import streamlit as st
@@ -383,4 +383,5 @@ class UIComponents:
         st.markdown(
             f'<span data-tooltip="{tooltip}">{element}</span>',
             unsafe_allow_html=True
+
         )
