@@ -2,7 +2,7 @@
 components.py - Componentes reutilizáveis da UI
 """
 
-from typing import *
+from typing import Any, List, Optional, Tuple, Dict
 
 import pandas as pd
 import streamlit as st
@@ -246,18 +246,21 @@ class UIComponents:
                     states[action['key']] = st.button(
                         label,
                         key=f"{key_prefix}_{action['key']}",
-                        type="primary"
+                        type="primary",
+                        use_container_width=True
                     )
                 elif button_type == 'danger':
                     states[action['key']] = st.button(
                         label,
                         key=f"{key_prefix}_{action['key']}",
-                        type="secondary"
+                        type="secondary",
+                        use_container_width=True
                     )
                 else:
                     states[action['key']] = st.button(
                         label,
-                        key=f"{key_prefix}_{action['key']}"
+                        key=f"{key_prefix}_{action['key']}",
+                        use_container_width=True
                     )
         
         return states
@@ -346,12 +349,12 @@ class UIComponents:
             col1, col2, col3 = st.columns([1, 1, 2])
             
             with col1:
-                if st.button(confirm_text, type="primary", key=f"confirm_{key}"):
+                if st.button(confirm_text, type="primary", key=f"confirm_{key}", use_container_width=True):
                     st.session_state[dialog_key] = True
                     st.rerun()
             
             with col2:
-                if st.button(cancel_text, key=f"cancel_{key}"):
+                if st.button(cancel_text, key=f"cancel_{key}", use_container_width=True):
                     st.session_state[dialog_key] = False
                     st.rerun()
         
@@ -383,5 +386,48 @@ class UIComponents:
         st.markdown(
             f'<span data-tooltip="{tooltip}">{element}</span>',
             unsafe_allow_html=True
-
         )
+
+    @staticmethod
+    def create_accessible_button(
+        label: str,
+        key: str,
+        help_text: Optional[str] = None,
+        shortcut: Optional[str] = None,
+        **kwargs
+    ) -> bool:
+        """
+        Cria botão acessível com atalho e descrição
+        
+        Args:
+            label: Rótulo do botão
+            key: Chave única
+            help_text: Texto de ajuda
+            shortcut: Atalho de teclado
+            **kwargs: Argumentos adicionais para st.button
+            
+        Returns:
+            True se clicado
+        """
+        if shortcut:
+            label = f"{label} ({shortcut})"
+        
+        if help_text:
+            st.markdown(f'<span id="help-{key}" style="display: none;">{help_text}</span>', unsafe_allow_html=True)
+        
+        button = st.button(label, key=key, use_container_width=True, **kwargs)
+        
+        if help_text:
+            st.markdown(f"""
+            <script>
+            (function() {{
+                const btn = document.querySelector('[key="{key}"] button');
+                if (btn) {{
+                    btn.setAttribute('aria-label', '{label}');
+                    btn.setAttribute('aria-describedby', 'help-{key}');
+                }}
+            }})();
+            </script>
+            """, unsafe_allow_html=True)
+        
+        return button
