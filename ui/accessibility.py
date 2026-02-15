@@ -142,3 +142,15 @@ class AccessibilityManager:
             f'<div aria-live="polite" style="position: absolute; width: 1px; height: 1px; overflow: hidden;">{message}</div>',
             unsafe_allow_html=True
         )
+
+    @staticmethod
+    def create_accessible_input(label: str, key: str, input_type: str = "text", 
+                               placeholder: str = "", required: bool = False, 
+                               help_text: str = ""):
+        """Cria um input acessível"""
+        if input_type == "password":
+            return st.text_input(label, type="password", placeholder=placeholder, 
+                                key=key, help=help_text)
+        else:
+            return st.text_input(label, placeholder=placeholder, key=key, 
+                                help=help_text)
