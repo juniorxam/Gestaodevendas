@@ -51,7 +51,35 @@ class AccessibilityManager:
             background-color: yellow !important;
             color: black !important;
         }
+        
+        /* Skip to content link */
+        .skip-to-content {
+            position: absolute;
+            left: -9999px;
+            top: auto;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+        }
+        
+        .skip-to-content:focus {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: auto;
+            height: auto;
+            padding: 10px;
+            background: #4A90E2;
+            color: white;
+            z-index: 9999;
+            text-decoration: none;
+            border-radius: 4px;
+            outline: 3px solid white;
+        }
         </style>
+        
+        <!-- Skip to content link -->
+        <a href="#main-content" class="skip-to-content">Pular para o conteúdo principal</a>
         """, unsafe_allow_html=True)
     
     @staticmethod
@@ -69,3 +97,31 @@ class AccessibilityManager:
             ):
                 st.session_state.high_contrast = not st.session_state.high_contrast
                 st.rerun()
+        
+        # Aplicar CSS de alto contraste se ativado
+        if st.session_state.high_contrast:
+            st.markdown("""
+            <style>
+            .main, .stApp {
+                background-color: black !important;
+                color: yellow !important;
+            }
+            .stButton button {
+                background-color: yellow !important;
+                color: black !important;
+                border: 2px solid white !important;
+            }
+            .stTextInput input, .stSelectbox select {
+                background-color: #333 !important;
+                color: yellow !important;
+                border: 1px solid yellow !important;
+            }
+            label, .stMarkdown, p, h1, h2, h3, h4 {
+                color: yellow !important;
+            }
+            [data-testid="stSidebar"] {
+                background-color: #222 !important;
+                border-right: 2px solid yellow !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
