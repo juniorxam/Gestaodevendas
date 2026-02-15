@@ -20,8 +20,8 @@ class Database:
     SQLite database manager com WAL mode e retry logic
     """
     
-    _MAX_WRITE_RETRIES = 10  # Aumentado de 6 para 10
-    _BASE_BACKOFF_SEC = 0.1  # Aumentado de 0.08 para 0.1
+    _MAX_WRITE_RETRIES = 10
+    _BASE_BACKOFF_SEC = 0.1
 
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
@@ -32,7 +32,6 @@ class Database:
         return ("database is locked" in msg) or ("database is busy" in msg) or ("locked" in msg and "database" in msg)
 
     def _with_write_retry(self, fn):
-        """Executa escrita com retry e backoff exponencial"""
         last_exc = None
         for attempt in range(self._MAX_WRITE_RETRIES):
             try:
@@ -56,7 +55,7 @@ class Database:
             conn.execute("PRAGMA synchronous=NORMAL;")
             conn.execute("PRAGMA foreign_keys=ON;")
             conn.execute("PRAGMA temp_store=MEMORY;")
-            conn.execute("PRAGMA busy_timeout=30000;")  # Aumentado para 30 segundos
+            conn.execute("PRAGMA busy_timeout=30000;")
             yield conn
             conn.commit()
         except Exception:
@@ -96,11 +95,11 @@ class Database:
             return pd.read_sql_query(query, conn, params=params)
 
     def init_schema(self) -> None:
-        """Inicializa o schema do banco de dados"""
+        """Inicializa o schema do banco de dados com suporte a soft delete"""
         with self.connect() as conn:
             c = conn.cursor()
             
-            # Tabela clientes
+            # Tabela clientes com campo ativo
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS clientes (
@@ -115,12 +114,22 @@ class Database:
                     estado TEXT,
                     cep TEXT,
                     data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    usuario_cadastro TEXT
+                    usuario_cadastro TEXT,
+                    ativo INTEGER DEFAULT 1
                 )
                 """
             )
+            
+            # Verificar e adicionar coluna ativo se não existir (para migração)
+            try:
+                c.execute("SELECT ativo FROM clientes LIMIT 1")
+            except sqlite3.OperationalError:
+                c.execute("ALTER TABLE clientes ADD COLUMN ativo INTEGER DEFAULT 1")
+                logging.info("Coluna 'ativo' adicionada à tabela clientes")
+            
             c.execute("CREATE INDEX IF NOT EXISTS idx_clientes_cpf ON clientes(cpf)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_clientes_nome ON clientes(nome)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_clientes_ativo ON clientes(ativo)")
 
             # Tabela categorias
             c.execute(
@@ -284,9 +293,8 @@ class Database:
 class OptimizedDatabase(Database):
     """Database com cache de consultas"""
     
-    # Constantes para cache
     MAX_CACHE_SIZE = 50
-    DEFAULT_TTL = 300  # 5 minutos
+    DEFAULT_TTL = 300
     
     def __init__(self, db_path: str) -> None:
         super().__init__(db_path)
@@ -323,20 +331,15 @@ class OptimizedDatabase(Database):
                 logging.warning(f"Query lenta ({elapsed:.2f}s): {query[:100]}...")
     
     def _clean_old_cache(self, ttl: int):
-        """Limpa cache antigo e mantém tamanho controlado"""
         current_time = datetime.now()
         to_remove = []
         
-        # Remover itens expirados
         for key, (cached_time, _) in self._query_cache.items():
             if (current_time - cached_time).seconds > ttl:
                 to_remove.append(key)
         
-        # Se ainda estiver muito grande, remover os mais antigos
         if len(self._query_cache) - len(to_remove) > self.MAX_CACHE_SIZE:
-            # Ordenar por timestamp (mais antigos primeiro)
             items = sorted(self._query_cache.items(), key=lambda x: x[1][0])
-            # Manter apenas os MAX_CACHE_SIZE mais recentes
             for key, _ in items[:len(items) - self.MAX_CACHE_SIZE]:
                 if key not in to_remove:
                     to_remove.append(key)
@@ -354,7 +357,6 @@ class OptimizedDatabase(Database):
         }
     
     def clear_cache(self):
-        """Limpa todo o cache"""
         self._query_cache.clear()
         self._cache_hits = 0
         self._cache_misses = 0
