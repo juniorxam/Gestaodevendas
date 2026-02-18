@@ -298,18 +298,7 @@ class ElectroGestApp:
         </style>
         """, unsafe_allow_html=True)
         
-          
-            col1, col2 = st.columns([1, 10])
-            with col1:
-                if st.button(
-                    "👁️" + (" (AC)" if st.session_state.high_contrast else ""),
-                    help="Alternar alto contraste",
-                    key="contrast_toggle"
-                ):
-                    st.session_state.high_contrast = not st.session_state.high_contrast
-                    st.rerun()
-            
-            st.markdown("---")
+        with st.sidebar:
             
             # Título do menu
             st.markdown("### 📍 Menu")
@@ -490,4 +479,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
