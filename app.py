@@ -298,11 +298,7 @@ class ElectroGestApp:
         </style>
         """, unsafe_allow_html=True)
         
-        with st.sidebar:
-            # Toggle de alto contraste
-            if 'high_contrast' not in st.session_state:
-                st.session_state.high_contrast = False
-            
+          
             col1, col2 = st.columns([1, 10])
             with col1:
                 if st.button(
@@ -494,3 +490,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
