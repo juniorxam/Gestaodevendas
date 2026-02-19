@@ -1,6 +1,6 @@
 """
 app.py - ElectroGest v1.0
-Ponto de entrada principal da aplicação Streamlit
+Ponto de entrada principal da aplicação Streamlit com captura de IP dinâmico
 """
 
 import streamlit as st
@@ -115,6 +115,51 @@ class ElectroGestApp:
         import atexit
         atexit.register(self._shutdown_backup)
     
+    def _get_client_ip(self) -> str:
+        """
+        Captura o IP real do cliente baseado nos headers do Streamlit
+        
+        Returns:
+            String com o IP do cliente ou '127.0.0.1' se não conseguir detectar
+        """
+        try:
+            # Tentar obter headers do Streamlit
+            headers = st.context.headers if hasattr(st, 'context') else {}
+            
+            # Lista de headers que podem conter o IP real (em ordem de prioridade)
+            ip_headers = [
+                'X-Forwarded-For',      # Header padrão de proxy
+                'X-Real-IP',             # Header do Nginx
+                'CF-Connecting-IP',       # Cloudflare
+                'True-Client-IP',         # Cloudflare
+                'X-Client-IP',           
+                'X-Forwarded',
+                'Forwarded-For',
+                'Forwarded',
+                'Remote-Addr'             # Fallback
+            ]
+            
+            # Verificar cada header
+            for header in ip_headers:
+                if header in headers:
+                    ip_value = headers[header]
+                    # X-Forwarded-For pode conter múltiplos IPs (cliente, proxy1, proxy2)
+                    if header == 'X-Forwarded-For' and ',' in ip_value:
+                        # Pegar o primeiro IP (do cliente original)
+                        return ip_value.split(',')[0].strip()
+                    return ip_value.strip()
+            
+            # Tentar obter IP da sessão do Streamlit (se disponível)
+            if hasattr(st, 'query_params') and 'client_ip' in st.query_params:
+                return st.query_params['client_ip']
+            
+        except Exception as e:
+            # Log do erro para debug (opcional)
+            print(f"Erro ao capturar IP: {e}")
+        
+        # Fallback para localhost
+        return "127.0.0.1"
+    
     def _init_services(self):
         """Inicializa todos os serviços com injeção de dependências"""
         try:
@@ -164,12 +209,13 @@ class ElectroGestApp:
                 )
                 
                 if hasattr(self, 'audit') and self.audit:
+                    ip = self._get_client_ip()
                     self.audit.registrar(
                         "SISTEMA",
                         "BACKUP",
                         "Backup automático iniciado",
                         f"Intervalo: {interval} horas",
-                        "127.0.0.1"
+                        ip
                     )
         
         except Exception as e:
@@ -179,12 +225,13 @@ class ElectroGestApp:
         """Callback executado quando um backup automático é concluído"""
         try:
             if hasattr(self, 'audit') and self.audit:
+                ip = self._get_client_ip()
                 self.audit.registrar(
                     "SISTEMA",
                     "BACKUP",
                     "Backup automático concluído",
                     f"Arquivo: {os.path.basename(backup_path)}",
-                    "127.0.0.1"
+                    ip
                 )
         except Exception as e:
             print(f"⚠️ Erro ao processar callback de backup: {str(e)}")
@@ -195,12 +242,13 @@ class ElectroGestApp:
             self.backup_manager.stop_auto_backup()
             
             if hasattr(self, 'audit') and self.audit:
+                ip = self._get_client_ip()
                 self.audit.registrar(
                     "SISTEMA",
                     "BACKUP",
                     "Backup automático encerrado",
                     "Aplicação finalizada",
-                    "127.0.0.1"
+                    ip
                 )
     
     def _init_session_state(self):
@@ -299,6 +347,21 @@ class ElectroGestApp:
         """, unsafe_allow_html=True)
         
         with st.sidebar:
+            # Toggle de alto contraste
+            if 'high_contrast' not in st.session_state:
+                st.session_state.high_contrast = False
+            
+            col1, col2 = st.columns([1, 10])
+            with col1:
+                if st.button(
+                    "👁️" + (" (AC)" if st.session_state.high_contrast else ""),
+                    help="Alternar alto contraste",
+                    key="contrast_toggle"
+                ):
+                    st.session_state.high_contrast = not st.session_state.high_contrast
+                    st.rerun()
+            
+            st.markdown("---")
             
             # Título do menu
             st.markdown("### 📍 Menu")
@@ -354,6 +417,8 @@ class ElectroGestApp:
     
     def _logout(self):
         """Realiza logout do usuário"""
+        ip = self._get_client_ip()
+        
         if st.session_state.get('usuario_nome') and hasattr(self, 'audit') and self.audit:
             try:
                 self.audit.registrar(
@@ -361,7 +426,7 @@ class ElectroGestApp:
                     "AUTH",
                     "Logout",
                     "Usuário desconectou do sistema",
-                    "127.0.0.1"
+                    ip
                 )
             except:
                 pass
