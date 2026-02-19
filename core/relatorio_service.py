@@ -433,10 +433,10 @@ class RelatorioPDFService:
         pdf.cell(0, 6, str(dados.get("total_vendas", 0)), 0, 1)
         
         pdf.cell(60, 6, "Faturamento Total:", 0, 0)
-        pdf.cell(0, 6, f"R$ {dados.get('faturamento_total', 0):,.2f}", 0, 1)
+        pdf.cell(0, 6, f"R$ {dados.get('faturamento_total', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), 0, 1)
         
         pdf.cell(60, 6, "Ticket Médio:", 0, 0)
-        pdf.cell(0, 6, f"R$ {dados.get('ticket_medio', 0):,.2f}", 0, 1)
+        pdf.cell(0, 6, f"R$ {dados.get('ticket_medio', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), 0, 1)
         
         pdf.cell(60, 6, "Clientes Atendidos:", 0, 0)
         pdf.cell(0, 6, str(dados.get('clientes_unicos', 0)), 0, 1)
@@ -457,9 +457,9 @@ class RelatorioPDFService:
             
             pdf.set_font("Arial", "", 9)
             for forma in dados["formas_pagamento"][:10]:
-                pdf.cell(70, 6, forma.get("forma_pagamento", ""), 1)
+                pdf.cell(70, 6, str(forma.get("forma_pagamento", "")), 1)
                 pdf.cell(40, 6, str(forma.get("quantidade", 0)), 1, 0, "C")
-                pdf.cell(70, 6, f"R$ {forma.get('valor_total', 0):,.2f}", 1, 1, "R")
+                pdf.cell(70, 6, f"R$ {forma.get('valor_total', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), 1, 1, "R")
         
         # Produtos mais vendidos
         if dados.get("produtos_mais_vendidos"):
@@ -477,14 +477,16 @@ class RelatorioPDFService:
             
             pdf.set_font("Arial", "", 9)
             for prod in dados["produtos_mais_vendidos"][:15]:
-                pdf.cell(80, 6, prod.get("produto", "")[:40], 1)
+                pdf.cell(80, 6, str(prod.get("produto", ""))[:40], 1)
                 pdf.cell(40, 6, str(prod.get("quantidade_vendida", 0)), 1, 0, "C")
-                pdf.cell(60, 6, f"R$ {prod.get('valor_total', 0):,.2f}", 1, 1, "R")
+                pdf.cell(60, 6, f"R$ {prod.get('valor_total', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), 1, 1, "R")
         
         # Rodapé
         RelatorioPDFService.gerar_rodape(pdf)
         
-        return bytes(pdf.output(dest="S"))
+        # CORREÇÃO: Garantir que retornamos bytes, não string
+        pdf_output = pdf.output(dest="S").encode('latin-1', errors='replace')
+        return pdf_output
 
     @staticmethod
     def gerar_relatorio_estoque_pdf(
@@ -520,7 +522,7 @@ class RelatorioPDFService:
         
         pdf.set_font("Arial", "", 10)
         pdf.cell(70, 6, "Valor Total do Estoque:", 0, 0)
-        pdf.cell(0, 6, f"R$ {dados.get('valor_total_estoque', 0):,.2f}", 0, 1)
+        pdf.cell(0, 6, f"R$ {dados.get('valor_total_estoque', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), 0, 1)
         
         pdf.cell(70, 6, "Total de Produtos Ativos:", 0, 0)
         pdf.cell(0, 6, str(dados.get('total_produtos_ativos', 0)), 0, 1)
@@ -552,8 +554,8 @@ class RelatorioPDFService:
             
             pdf.set_font("Arial", "", 8)
             for prod in dados["estoque_baixo_detalhes"][:20]:
-                pdf.cell(60, 5, prod.get("codigo_barras", "")[:15], 1)
-                pdf.cell(60, 5, prod.get("nome", "")[:25], 1)
+                pdf.cell(60, 5, str(prod.get("codigo_barras", ""))[:15], 1)
+                pdf.cell(60, 5, str(prod.get("nome", ""))[:25], 1)
                 pdf.cell(30, 5, str(prod.get("quantidade_estoque", 0)), 1, 0, "C")
                 pdf.cell(30, 5, str(prod.get("estoque_minimo", 0)), 1, 1, "C")
         
@@ -574,12 +576,14 @@ class RelatorioPDFService:
             
             pdf.set_font("Arial", "", 9)
             for cat in dados["categorias"]:
-                pdf.cell(70, 6, cat.get("categoria", "")[:30], 1)
+                pdf.cell(70, 6, str(cat.get("categoria", ""))[:30], 1)
                 pdf.cell(40, 6, str(cat.get("total_produtos", 0)), 1, 0, "C")
                 pdf.cell(40, 6, str(cat.get("total_itens", 0)), 1, 0, "C")
-                pdf.cell(40, 6, f"R$ {cat.get('valor_estoque', 0):,.2f}", 1, 1, "R")
+                pdf.cell(40, 6, f"R$ {cat.get('valor_estoque', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), 1, 1, "R")
         
         # Rodapé
         RelatorioPDFService.gerar_rodape(pdf)
         
-        return bytes(pdf.output(dest="S"))
+        # CORREÇÃO: Garantir que retornamos bytes, não string
+        pdf_output = pdf.output(dest="S").encode('latin-1', errors='replace')
+        return pdf_output
