@@ -286,29 +286,38 @@ class EstoquePage:
                     if selecao:
                         produto_id = opcoes[selecao]
                         produto_selecionado = produtos[produtos['id'] == produto_id].iloc[0]
+                        
+                        # Mostrar informações do produto selecionado
+                        st.markdown(f"""
+                        **Produto selecionado:** {produto_selecionado['nome']}
+                        **Estoque atual:** {produto_selecionado['quantidade_estoque']} unidades
+                        **Preço de custo:** R$ {produto_selecionado['preco_custo']:,.2f}
+                        """)
             
-            if produto_selecionado is not None:
-                st.markdown(f"""
-                **Produto selecionado:** {produto_selecionado['nome']}
-                **Estoque atual:** {produto_selecionado['quantidade_estoque']} unidades
-                **Preço de custo:** R$ {produto_selecionado['preco_custo']:,.2f}
-                """)
-                
-                quantidade = st.number_input(
-                    "Quantidade a adicionar:*",
-                    min_value=1,
-                    value=1,
-                    step=1,
-                    key="qtd_entrada"
-                )
-                
-                observacao = st.text_area(
-                    "Observação:",
-                    placeholder="Ex: Nota fiscal 123456, fornecedor XYZ",
-                    key="obs_entrada"
-                )
-                
-                if st.form_submit_button("✅ Registrar Entrada", type="primary"):
+            # Campos do formulário (sempre visíveis)
+            quantidade = st.number_input(
+                "Quantidade a adicionar:*",
+                min_value=1,
+                value=1,
+                step=1,
+                key="qtd_entrada"
+            )
+            
+            observacao = st.text_area(
+                "Observação:",
+                placeholder="Ex: Nota fiscal 123456, fornecedor XYZ",
+                key="obs_entrada"
+            )
+            
+            # Botão de submit (fora de qualquer condicional)
+            submitted = st.form_submit_button("✅ Registrar Entrada", type="primary")
+            
+            if submitted:
+                if not busca_produto:
+                    UIComponents.show_error_message("Por favor, busque e selecione um produto!")
+                elif produto_selecionado is None:
+                    UIComponents.show_error_message("Produto não encontrado ou não selecionado!")
+                else:
                     sucesso, msg = self.estoque.entrada_estoque(
                         produto_id=int(produto_selecionado['id']),
                         quantidade=quantidade,
@@ -362,50 +371,61 @@ class EstoquePage:
                     if selecao:
                         produto_id = opcoes[selecao]
                         produto_selecionado = produtos[produtos['id'] == produto_id].iloc[0]
+                        
+                        estoque_atual = int(produto_selecionado['quantidade_estoque'])
+                        st.markdown(f"""
+                        **Produto selecionado:** {produto_selecionado['nome']}
+                        **Estoque atual:** {estoque_atual} unidades
+                        """)
             
-            if produto_selecionado is not None:
-                estoque_atual = int(produto_selecionado['quantidade_estoque'])
-                
-                st.markdown(f"""
-                **Produto selecionado:** {produto_selecionado['nome']}
-                **Estoque atual:** {estoque_atual} unidades
-                """)
-                
-                quantidade = st.number_input(
-                    "Quantidade a retirar:*",
-                    min_value=1,
-                    max_value=estoque_atual if estoque_atual > 0 else 1,
-                    value=min(1, estoque_atual) if estoque_atual > 0 else 0,
-                    step=1,
-                    key="qtd_saida"
-                )
-                
-                motivo = st.selectbox(
-                    "Motivo da saída:*",
-                    ["Avaria", "Perda", "Amostra", "Devolução ao fornecedor", "Outro"],
-                    key="motivo_saida"
-                )
-                
-                observacao = st.text_area(
-                    "Observação:",
-                    placeholder="Detalhes adicionais sobre a saída",
-                    key="obs_saida"
-                )
-                
-                if st.form_submit_button("✅ Registrar Saída", type="primary"):
-                    sucesso, msg = self.estoque.saida_estoque(
-                        produto_id=int(produto_selecionado['id']),
-                        quantidade=quantidade,
-                        usuario=st.session_state.usuario_login,
-                        observacao=f"{motivo} - {observacao}" if observacao else motivo
-                    )
-                    
-                    if sucesso:
-                        UIComponents.show_success_message(msg)
-                        AccessibilityManager.announce_message(f"Saída de {quantidade} unidades registrada")
-                        st.rerun()
+            # Campos do formulário
+            quantidade = st.number_input(
+                "Quantidade a retirar:*",
+                min_value=1,
+                value=1,
+                step=1,
+                key="qtd_saida"
+            )
+            
+            motivo = st.selectbox(
+                "Motivo da saída:*",
+                ["Avaria", "Perda", "Amostra", "Devolução ao fornecedor", "Outro"],
+                key="motivo_saida"
+            )
+            
+            observacao = st.text_area(
+                "Observação:",
+                placeholder="Detalhes adicionais sobre a saída",
+                key="obs_saida"
+            )
+            
+            # Botão de submit
+            submitted = st.form_submit_button("✅ Registrar Saída", type="primary")
+            
+            if submitted:
+                if not busca_produto:
+                    UIComponents.show_error_message("Por favor, busque e selecione um produto!")
+                elif produto_selecionado is None:
+                    UIComponents.show_error_message("Produto não encontrado ou não selecionado!")
+                else:
+                    # Verificar estoque
+                    estoque_atual = int(produto_selecionado['quantidade_estoque'])
+                    if quantidade > estoque_atual:
+                        UIComponents.show_error_message(f"Estoque insuficiente! Disponível: {estoque_atual}")
                     else:
-                        UIComponents.show_error_message(msg)
+                        sucesso, msg = self.estoque.saida_estoque(
+                            produto_id=int(produto_selecionado['id']),
+                            quantidade=quantidade,
+                            usuario=st.session_state.usuario_login,
+                            observacao=f"{motivo} - {observacao}" if observacao else motivo
+                        )
+                        
+                        if sucesso:
+                            UIComponents.show_success_message(msg)
+                            AccessibilityManager.announce_message(f"Saída de {quantidade} unidades registrada")
+                            st.rerun()
+                        else:
+                            UIComponents.show_error_message(msg)
     
     def _render_ajuste(self):
         """Renderiza formulário de ajuste de estoque"""
@@ -445,41 +465,39 @@ class EstoquePage:
                     if selecao:
                         produto_id = opcoes[selecao]
                         produto_selecionado = produtos[produtos['id'] == produto_id].iloc[0]
+                        
+                        estoque_atual = int(produto_selecionado['quantidade_estoque'])
+                        st.markdown(f"""
+                        **Produto selecionado:** {produto_selecionado['nome']}
+                        **Estoque atual:** {estoque_atual} unidades
+                        """)
             
-            if produto_selecionado is not None:
-                estoque_atual = int(produto_selecionado['quantidade_estoque'])
-                
-                st.markdown(f"""
-                **Produto selecionado:** {produto_selecionado['nome']}
-                **Estoque atual:** {estoque_atual} unidades
-                """)
-                
-                nova_quantidade = st.number_input(
-                    "Nova quantidade em estoque:*",
-                    min_value=0,
-                    value=estoque_atual,
-                    step=1,
-                    key="nova_qtd_ajuste"
-                )
-                
-                if nova_quantidade != estoque_atual:
-                    diferenca = nova_quantidade - estoque_atual
-                    if diferenca > 0:
-                        st.info(f"Serão **adicionadas** {diferenca} unidades ao estoque.")
-                    else:
-                        st.warning(f"Serão **removidas** {abs(diferenca)} unidades do estoque.")
-                
-                motivo = st.text_area(
-                    "Motivo do ajuste:*",
-                    placeholder="Ex: Após contagem física, diferença identificada",
-                    key="motivo_ajuste"
-                )
-                
-                if st.form_submit_button("✅ Realizar Ajuste", type="primary"):
-                    if not motivo.strip():
-                        UIComponents.show_error_message("Motivo do ajuste é obrigatório!")
-                        st.stop()
-                    
+            # Campos do formulário
+            nova_quantidade = st.number_input(
+                "Nova quantidade em estoque:*",
+                min_value=0,
+                value=0,
+                step=1,
+                key="nova_qtd_ajuste"
+            )
+            
+            motivo = st.text_area(
+                "Motivo do ajuste:*",
+                placeholder="Ex: Após contagem física, diferença identificada",
+                key="motivo_ajuste"
+            )
+            
+            # Botão de submit
+            submitted = st.form_submit_button("✅ Realizar Ajuste", type="primary")
+            
+            if submitted:
+                if not busca_produto:
+                    UIComponents.show_error_message("Por favor, busque e selecione um produto!")
+                elif produto_selecionado is None:
+                    UIComponents.show_error_message("Produto não encontrado ou não selecionado!")
+                elif not motivo.strip():
+                    UIComponents.show_error_message("Motivo do ajuste é obrigatório!")
+                else:
                     sucesso, msg = self.estoque.ajuste_estoque(
                         produto_id=int(produto_selecionado['id']),
                         nova_quantidade=nova_quantidade,
