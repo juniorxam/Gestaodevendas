@@ -1,7 +1,8 @@
 """
-auth_service.py - Serviços de autenticação e auditoria
+auth_service.py - Serviços de autenticação e auditoria com IP dinâmico
 """
 
+import streamlit as st
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -12,8 +13,68 @@ class AuditLog:
     def __init__(self, db: "Database") -> None:
         self.db = db
 
-    def registrar(self, usuario: str, modulo: str, acao: str, detalhes: str = "", ip_address: str = "127.0.0.1") -> None:
+    def _get_client_ip(self) -> str:
+        """
+        Captura o IP real do cliente baseado nos headers do Streamlit
+        
+        Returns:
+            String com o IP do cliente ou '127.0.0.1' se não conseguir detectar
+        """
+        try:
+            # Tentar obter headers do Streamlit
+            headers = st.context.headers if hasattr(st, 'context') else {}
+            
+            # Lista de headers que podem conter o IP real (em ordem de prioridade)
+            ip_headers = [
+                'X-Forwarded-For',      # Header padrão de proxy
+                'X-Real-IP',             # Header do Nginx
+                'CF-Connecting-IP',       # Cloudflare
+                'True-Client-IP',         # Cloudflare
+                'X-Client-IP',           
+                'X-Forwarded',
+                'Forwarded-For',
+                'Forwarded',
+                'Remote-Addr'             # Fallback
+            ]
+            
+            # Verificar cada header
+            for header in ip_headers:
+                if header in headers:
+                    ip_value = headers[header]
+                    # X-Forwarded-For pode conter múltiplos IPs (cliente, proxy1, proxy2)
+                    if header == 'X-Forwarded-For' and ',' in ip_value:
+                        # Pegar o primeiro IP (do cliente original)
+                        return ip_value.split(',')[0].strip()
+                    return ip_value.strip()
+            
+            # Tentar obter IP da sessão do Streamlit (se disponível)
+            if hasattr(st, 'query_params') and 'client_ip' in st.query_params:
+                return st.query_params['client_ip']
+            
+        except Exception as e:
+            # Log do erro para debug (opcional)
+            print(f"Erro ao capturar IP: {e}")
+        
+        # Fallback para localhost
+        return "127.0.0.1"
+
+    def registrar(self, usuario: str, modulo: str, acao: str, detalhes: str = "", ip_address: str = None) -> None:
+        """
+        Registra uma ação no log de auditoria
+        
+        Args:
+            usuario: Nome do usuário
+            modulo: Módulo do sistema
+            acao: Ação realizada
+            detalhes: Detalhes adicionais
+            ip_address: IP do cliente (se None, tenta capturar automaticamente)
+        """
         agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Se não forneceu IP, tenta capturar
+        if ip_address is None:
+            ip_address = self._get_client_ip()
+        
         self.db.execute(
             """
             INSERT INTO logs (data_hora, usuario, modulo, acao, detalhes, ip_address)
