@@ -605,7 +605,7 @@ class ClientesPage:
                 st.error(f"❌ Erro ao processar arquivo: {str(e)}")
 
     def _render_analise_rfm(self):
-        """Renderiza análise RFM"""
+        """Renderiza análise RFM de clientes com scoring robusto"""
         st.subheader("📊 Análise RFM de Clientes")
         
         st.info("""
@@ -621,6 +621,7 @@ class ClientesPage:
             st.warning("Serviço de vendas não disponível para análise RFM.")
             return
         
+        # Query melhorada para incluir apenas clientes com compras
         query = """
             SELECT 
                 c.id,
@@ -629,33 +630,99 @@ class ClientesPage:
                 c.telefone,
                 c.email,
                 COUNT(v.id) as frequencia,
-                SUM(v.valor_total) as valor_total,
+                COALESCE(SUM(v.valor_total), 0) as valor_total,
                 MAX(v.data_venda) as ultima_compra,
                 MIN(v.data_venda) as primeira_compra,
-                julianday('now') - julianday(MAX(v.data_venda)) as dias_ultima_compra
+                julianday('now') - julianday(COALESCE(MAX(v.data_venda), 'now')) as dias_ultima_compra
             FROM clientes c
-            JOIN vendas v ON c.id = v.cliente_id
+            LEFT JOIN vendas v ON c.id = v.cliente_id
             WHERE c.ativo = 1
             GROUP BY c.id
-            ORDER BY valor_total DESC
+            HAVING COUNT(v.id) > 0  -- Apenas clientes com compras
         """
         
         df_rfm = self.db.read_sql(query)
         
         if df_rfm.empty:
-            st.info("Nenhum dado disponível para análise RFM.")
+            st.info("Nenhum dado disponível para análise RFM. É necessário ter clientes com compras registradas.")
             return
         
-        df_rfm['R_score'] = pd.qcut(df_rfm['dias_ultima_compra'], q=5, labels=[5,4,3,2,1], duplicates='drop')
-        df_rfm['F_score'] = pd.qcut(df_rfm['frequencia'], q=5, labels=[1,2,3,4,5], duplicates='drop')
-        df_rfm['M_score'] = pd.qcut(df_rfm['valor_total'], q=5, labels=[1,2,3,4,5], duplicates='drop')
+        # Função para criar scores de forma segura
+        def safe_rfm_scoring(df, column, q=5, reverse=False):
+            """
+            Cria scores RFM de forma segura, lidando com valores duplicados
+            
+            Args:
+                df: DataFrame
+                column: Coluna para calcular score
+                q: Número de quantis desejados
+                reverse: Se True, maiores valores recebem menores scores (para recência)
+            """
+            try:
+                # Primeira tentativa: usar qcut com rank para evitar problemas com duplicatas
+                if reverse:
+                    # Para recência: menores valores = maiores scores
+                    return pd.qcut(df[column].rank(method='first'), q=q, 
+                                  labels=range(q, 0, -1))
+                else:
+                    # Para frequência e valor: maiores valores = maiores scores
+                    return pd.qcut(df[column].rank(method='first'), q=q, 
+                                  labels=range(1, q+1))
+            except Exception as e:
+                # Fallback: divisão baseada em percentis
+                st.caption(f"Usando método alternativo para {column}: {str(e)[:50]}...")
+                
+                # Ordenar valores
+                sorted_vals = df[column].sort_values().values
+                n = len(sorted_vals)
+                
+                # Criar scores baseados em percentis
+                scores = []
+                for val in df[column]:
+                    # Calcular percentil aproximado
+                    position = sum(sorted_vals <= val) / n
+                    
+                    if reverse:
+                        # Recência: menor valor = maior score
+                        if position <= 0.2:
+                            scores.append(5)
+                        elif position <= 0.4:
+                            scores.append(4)
+                        elif position <= 0.6:
+                            scores.append(3)
+                        elif position <= 0.8:
+                            scores.append(2)
+                        else:
+                            scores.append(1)
+                    else:
+                        # Frequência/Valor: maior valor = maior score
+                        if position >= 0.8:
+                            scores.append(5)
+                        elif position >= 0.6:
+                            scores.append(4)
+                        elif position >= 0.4:
+                            scores.append(3)
+                        elif position >= 0.2:
+                            scores.append(2)
+                        else:
+                            scores.append(1)
+                
+                return pd.Series(scores, index=df.index)
         
-        df_rfm['RFM_score'] = (
-            df_rfm['R_score'].astype(int) + 
-            df_rfm['F_score'].astype(int) + 
-            df_rfm['M_score'].astype(int)
-        )
+        # Aplicar scoring seguro
+        df_rfm['R_score'] = safe_rfm_scoring(df_rfm, 'dias_ultima_compra', reverse=True)
+        df_rfm['F_score'] = safe_rfm_scoring(df_rfm, 'frequencia', reverse=False)
+        df_rfm['M_score'] = safe_rfm_scoring(df_rfm, 'valor_total', reverse=False)
         
+        # Garantir que os scores são inteiros
+        df_rfm['R_score'] = df_rfm['R_score'].astype(int)
+        df_rfm['F_score'] = df_rfm['F_score'].astype(int)
+        df_rfm['M_score'] = df_rfm['M_score'].astype(int)
+        
+        # Calcular score total
+        df_rfm['RFM_score'] = df_rfm['R_score'] + df_rfm['F_score'] + df_rfm['M_score']
+        
+        # Classificar clientes
         def classificar_cliente(row):
             if row['RFM_score'] >= 13:
                 return '🏆 CAMPEÃO'
@@ -670,6 +737,7 @@ class ClientesPage:
         
         df_rfm['classificacao'] = df_rfm.apply(classificar_cliente, axis=1)
         
+        # Estatísticas resumidas
         col_rfm1, col_rfm2, col_rfm3, col_rfm4 = st.columns(4)
         
         with col_rfm1:
@@ -688,24 +756,41 @@ class ClientesPage:
             risco = len(df_rfm[df_rfm['classificacao'].isin(['⚠️ EM RISCO', '❌ INATIVO'])])
             st.metric("⚠️ Em Risco", risco)
         
+        # Tabela detalhada
         st.subheader("📋 Análise Detalhada")
         
-        df_display = df_rfm[['nome', 'classificacao', 'frequencia', 'valor_total', 'ultima_compra']].copy()
-        df_display['ultima_compra'] = pd.to_datetime(df_display['ultima_compra']).dt.strftime('%d/%m/%Y')
-        df_display['valor_total'] = df_display['valor_total'].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        # Preparar DataFrame para exibição
+        df_display = df_rfm[['nome', 'classificacao', 'frequencia', 'valor_total', 
+                             'ultima_compra', 'R_score', 'F_score', 'M_score', 'RFM_score']].copy()
         
+        # Formatação para exibição
+        df_display['ultima_compra'] = pd.to_datetime(df_display['ultima_compra']).dt.strftime('%d/%m/%Y')
+        df_display['valor_total'] = df_display['valor_total'].apply(
+            lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
+        
+        # Ordenar por score total (melhores primeiro)
+        df_display = df_display.sort_values('RFM_score', ascending=False)
+        
+        # Exibir tabela
         st.dataframe(
             df_display,
             hide_index=True,
+            use_container_width=True,
             column_config={
                 "nome": "Cliente",
                 "classificacao": "Classificação",
                 "frequencia": "Compras",
                 "valor_total": "Total Gasto",
-                "ultima_compra": "Última Compra"
+                "ultima_compra": "Última Compra",
+                "R_score": "R",
+                "F_score": "F",
+                "M_score": "M",
+                "RFM_score": "Total"
             }
         )
         
+        # Sugestões de ação
         st.subheader("💡 Sugestões de Ação")
         
         col_sug1, col_sug2 = st.columns(2)
@@ -718,6 +803,13 @@ class ClientesPage:
             - Pedir indicações
             - Atendimento prioritário
             """)
+            
+            # Listar campeões
+            campeoes_lista = df_rfm[df_rfm['classificacao'] == '🏆 CAMPEÃO']['nome'].tolist()
+            if campeoes_lista:
+                with st.expander(f"Ver lista de campeões ({len(campeoes_lista)})"):
+                    for nome in campeoes_lista[:20]:
+                        st.markdown(f"- {nome}")
         
         with col_sug2:
             st.markdown("**⚠️ Clientes em Risco**")
@@ -727,3 +819,35 @@ class ClientesPage:
             - Ofertas personalizadas
             - Campanha de reativação
             """)
+            
+            # Listar em risco
+            risco_lista = df_rfm[df_rfm['classificacao'].isin(['⚠️ EM RISCO', '❌ INATIVO'])]['nome'].tolist()
+            if risco_lista:
+                with st.expander(f"Ver clientes em risco ({len(risco_lista)})"):
+                    for nome in risco_lista[:20]:
+                        st.markdown(f"- {nome}")
+        
+        # Opção de exportar análise
+        st.markdown("---")
+        col_exp1, col_exp2, col_exp3 = st.columns([1, 1, 2])
+        
+        with col_exp1:
+            csv_rfm = df_rfm.to_csv(index=False)
+            st.download_button(
+                "📥 Exportar CSV",
+                csv_rfm,
+                f"analise_rfm_{date.today().strftime('%Y%m%d')}.csv",
+                "text/csv",
+                key="download_rfm_csv"
+            )
+        
+        with col_exp2:
+            # Gráfico de distribuição
+            import plotly.express as px
+            fig = px.pie(
+                df_rfm,
+                names='classificacao',
+                title='Distribuição por Classificação RFM',
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            st.plotly_chart(fig, use_container_width=True)
