@@ -1,5 +1,5 @@
 """
-vendas.py - Página de registro de vendas
+vendas.py - Página de registro de vendas com ajuste de preços
 """
 
 from datetime import date, datetime, timedelta
@@ -15,7 +15,7 @@ from ui.accessibility import AccessibilityManager
 
 
 class VendasPage:
-    """Página de vendas - PDV"""
+    """Página de vendas - PDV com ajuste de preços"""
     
     def __init__(self, db, vendas, clientes, produtos, promocoes, auth):
         self.db = db
@@ -29,12 +29,24 @@ class VendasPage:
         self._carrinho_key = "carrinho_compras"
         self._cliente_selecionado_key = "cliente_venda_atual"
         
+        # Configurações de ajuste de preço
+        self._config_ajuste_key = "config_ajuste_preco"
+        self._valor_ajustado_key = "valor_ajustado_venda"
+        
         # Inicializar carrinho na sessão
         if self._carrinho_key not in st.session_state:
             st.session_state[self._carrinho_key] = []
         
         if self._cliente_selecionado_key not in st.session_state:
             st.session_state[self._cliente_selecionado_key] = None
+            
+        if self._config_ajuste_key not in st.session_state:
+            st.session_state[self._config_ajuste_key] = {
+                "tipo_ajuste": "SEM AJUSTE",
+                "percentual": 0,
+                "valor_fixo": 0,
+                "motivo": ""
+            }
     
     def render(self):
         """Renderiza página de vendas"""
@@ -69,6 +81,7 @@ class VendasPage:
         
         with col_direita:
             self._render_secao_cliente()
+            self._render_ajuste_preco()  # NOVA FUNÇÃO
             self._render_resumo_venda()
             self._render_finalizacao()
     
@@ -252,6 +265,12 @@ class VendasPage:
         if st.button("🗑️ Limpar Carrinho"):
             st.session_state[self._carrinho_key] = []
             st.session_state[self._cliente_selecionado_key] = None
+            st.session_state[self._config_ajuste_key] = {
+                "tipo_ajuste": "SEM AJUSTE",
+                "percentual": 0,
+                "valor_fixo": 0,
+                "motivo": ""
+            }
             st.rerun()
     
     def _render_secao_cliente(self):
@@ -332,6 +351,134 @@ class VendasPage:
                             else:
                                 UIComponents.show_error_message(msg)
     
+    # NOVA FUNÇÃO: Ajuste de preço na venda
+    def _render_ajuste_preco(self):
+        """Renderiza seção de ajuste de preço (desconto/acréscimo)"""
+        st.markdown("### 💰 Ajuste de Preço")
+        
+        carrinho = st.session_state[self._carrinho_key]
+        if not carrinho:
+            return
+        
+        # Calcular subtotal atual
+        subtotal = sum(item['subtotal'] for item in carrinho)
+        
+        config = st.session_state[self._config_ajuste_key]
+        
+        # Tipo de ajuste
+        tipo_ajuste = st.radio(
+            "Tipo de ajuste:",
+            ["SEM AJUSTE", "DESCONTO (%)", "DESCONTO (R$)", "ACRÉSCIMO (%)", "ACRÉSCIMO (R$)", "VALOR MANUAL"],
+            index=["SEM AJUSTE", "DESCONTO (%)", "DESCONTO (R$)", "ACRÉSCIMO (%)", "ACRÉSCIMO (R$)", "VALOR MANUAL"].index(config["tipo_ajuste"]),
+            key="tipo_ajuste",
+            horizontal=True
+        )
+        
+        config["tipo_ajuste"] = tipo_ajuste
+        
+        valor_ajustado = subtotal
+        
+        if tipo_ajuste == "SEM AJUSTE":
+            st.info(f"Valor original: **R$ {subtotal:,.2f}**".replace(",", "X").replace(".", ",").replace("X", "."))
+            config["percentual"] = 0
+            config["valor_fixo"] = 0
+            
+        elif tipo_ajuste == "DESCONTO (%)":
+            percentual = st.slider(
+                "Percentual de desconto:",
+                min_value=0.0,
+                max_value=50.0,
+                value=float(config.get("percentual", 0)),
+                step=0.5,
+                format="%.1f%%",
+                key="percentual_desconto"
+            )
+            config["percentual"] = percentual
+            valor_desconto = subtotal * (percentual / 100)
+            valor_ajustado = subtotal - valor_desconto
+            st.success(f"**Desconto:** R$ {valor_desconto:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            st.metric("Valor com desconto", f"R$ {valor_ajustado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), delta=f"-{percentual}%")
+            
+        elif tipo_ajuste == "DESCONTO (R$)":
+            valor_desconto = st.number_input(
+                "Valor do desconto (R$):",
+                min_value=0.0,
+                max_value=subtotal,
+                value=float(config.get("valor_fixo", 0)),
+                step=1.0,
+                format="%.2f",
+                key="valor_desconto_fixo"
+            )
+            config["valor_fixo"] = valor_desconto
+            valor_ajustado = subtotal - valor_desconto
+            percentual_equiv = (valor_desconto / subtotal * 100) if subtotal > 0 else 0
+            st.success(f"**Desconto:** R$ {valor_desconto:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            st.metric("Valor com desconto", f"R$ {valor_ajustado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), delta=f"-{percentual_equiv:.1f}%")
+            
+        elif tipo_ajuste == "ACRÉSCIMO (%)":
+            percentual = st.slider(
+                "Percentual de acréscimo:",
+                min_value=0.0,
+                max_value=50.0,
+                value=float(config.get("percentual", 0)),
+                step=0.5,
+                format="%.1f%%",
+                key="percentual_acrescimo"
+            )
+            config["percentual"] = percentual
+            valor_acrescimo = subtotal * (percentual / 100)
+            valor_ajustado = subtotal + valor_acrescimo
+            st.warning(f"**Acréscimo:** R$ {valor_acrescimo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            st.metric("Valor com acréscimo", f"R$ {valor_ajustado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), delta=f"+{percentual}%")
+            
+        elif tipo_ajuste == "ACRÉSCIMO (R$)":
+            valor_acrescimo = st.number_input(
+                "Valor do acréscimo (R$):",
+                min_value=0.0,
+                max_value=subtotal * 2,
+                value=float(config.get("valor_fixo", 0)),
+                step=1.0,
+                format="%.2f",
+                key="valor_acrescimo_fixo"
+            )
+            config["valor_fixo"] = valor_acrescimo
+            valor_ajustado = subtotal + valor_acrescimo
+            percentual_equiv = (valor_acrescimo / subtotal * 100) if subtotal > 0 else 0
+            st.warning(f"**Acréscimo:** R$ {valor_acrescimo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            st.metric("Valor com acréscimo", f"R$ {valor_ajustado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), delta=f"+{percentual_equiv:.1f}%")
+            
+        elif tipo_ajuste == "VALOR MANUAL":
+            valor_manual = st.number_input(
+                "Valor final da venda (R$):",
+                min_value=0.01,
+                max_value=subtotal * 3,
+                value=float(config.get("valor_fixo", subtotal)),
+                step=1.0,
+                format="%.2f",
+                key="valor_manual"
+            )
+            config["valor_fixo"] = valor_manual
+            valor_ajustado = valor_manual
+            diferenca = valor_ajustado - subtotal
+            if diferenca > 0:
+                st.warning(f"**Acréscimo:** R$ {diferenca:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            elif diferenca < 0:
+                st.success(f"**Desconto:** R$ {abs(diferenca):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        # Motivo do ajuste
+        if tipo_ajuste != "SEM AJUSTE":
+            motivo = st.text_input(
+                "Motivo do ajuste:",
+                value=config.get("motivo", ""),
+                placeholder="Ex: Promoção PIX, Parcelamento em 10x",
+                key="motivo_ajuste"
+            )
+            config["motivo"] = motivo
+        
+        # Salvar configuração
+        st.session_state[self._config_ajuste_key] = config
+        st.session_state[self._valor_ajustado_key] = valor_ajustado
+    
     def _render_resumo_venda(self):
         """Renderiza resumo da venda"""
         st.markdown("### 📊 Resumo")
@@ -345,13 +492,19 @@ class VendasPage:
         subtotal = sum(item['subtotal'] for item in carrinho)
         total_itens = sum(item['quantidade'] for item in carrinho)
         
-        # Aplicar promoções (se houver)
-        # Por simplicidade, não implementamos promoções automáticas aqui
+        # Valor ajustado
+        valor_final = st.session_state.get(self._valor_ajustado_key, subtotal)
         
         st.markdown(f"""
         **Itens:** {total_itens}
         **Subtotal:** R$ {subtotal:,.2f}
         """.replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        if valor_final != subtotal:
+            if valor_final < subtotal:
+                st.success(f"**Valor final (com desconto):** R$ {valor_final:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            else:
+                st.warning(f"**Valor final (com acréscimo):** R$ {valor_final:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     
     def _render_finalizacao(self):
         """Renderiza seção de finalização da venda"""
@@ -364,9 +517,29 @@ class VendasPage:
         
         forma_pagamento = st.selectbox(
             "Forma de pagamento:*",
-            ["Dinheiro", "Cartão de Crédito", "Cartão de Débito", "PIX", "Transferência", "Crediário"],
+            ["Dinheiro", "PIX", "Cartão de Débito", "Cartão de Crédito", "Transferência", "Crediário"],
             key="forma_pagamento"
         )
+        
+        # Sugestões automáticas baseadas na forma de pagamento
+        config = st.session_state[self._config_ajuste_key]
+        if forma_pagamento in ["Dinheiro", "PIX"] and config["tipo_ajuste"] == "SEM AJUSTE":
+            st.info("💡 Sugestão: Ofereça desconto para pagamento à vista!")
+        elif forma_pagamento == "Cartão de Crédito" and config["tipo_ajuste"] == "SEM AJUSTE":
+            st.info("💡 Sugestão: Considere acréscimo para parcelamento")
+        
+        # Opções de parcelamento para cartão
+        parcelas = 1
+        if forma_pagamento == "Cartão de Crédito":
+            parcelas = st.selectbox(
+                "Número de parcelas:",
+                [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+                index=0,
+                key="parcelas"
+            )
+            
+            if parcelas > 1:
+                st.caption(f"Parcelas de R$ {st.session_state.get(self._valor_ajustado_key, 0) / parcelas:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         
         # Observações
         observacao = st.text_area(
@@ -375,26 +548,49 @@ class VendasPage:
             key="obs_venda"
         )
         
+        # Adicionar informações de ajuste à observação
+        if config["tipo_ajuste"] != "SEM AJUSTE" and config.get("motivo"):
+            if observacao:
+                observacao += f" | {config['tipo_ajuste']}: {config['motivo']}"
+            else:
+                observacao = f"{config['tipo_ajuste']}: {config['motivo']}"
+        
         # Botão de finalização
         if st.button("✅ Finalizar Venda", type="primary"):
-            self._finalizar_venda(forma_pagamento, observacao)
+            self._finalizar_venda(forma_pagamento, observacao, parcelas)
     
-    def _finalizar_venda(self, forma_pagamento: str, observacao: str):
-        """Finaliza a venda"""
+    def _finalizar_venda(self, forma_pagamento: str, observacao: str, parcelas: int = 1):
+        """Finaliza a venda com preços ajustados"""
         carrinho = st.session_state[self._carrinho_key]
         cliente = st.session_state[self._cliente_selecionado_key]
+        config = st.session_state[self._config_ajuste_key]
         
-        # Preparar itens para o serviço
+        # Calcular fator de ajuste
+        subtotal = sum(item['subtotal'] for item in carrinho)
+        valor_final = st.session_state.get(self._valor_ajustado_key, subtotal)
+        fator_ajuste = valor_final / subtotal if subtotal > 0 else 1
+        
+        # Preparar itens com preços ajustados proporcionalmente
         itens = []
         for item in carrinho:
+            # Ajustar preço unitário proporcionalmente
+            preco_ajustado = item['preco_unitario'] * fator_ajuste
+            
             itens.append({
                 'produto_id': item['produto_id'],
                 'quantidade': item['quantidade'],
-                'preco_unitario': item['preco_unitario']
+                'preco_unitario': preco_ajustado
             })
         
         # Registrar venda
         cliente_id = cliente['id'] if cliente else None
+        
+        # Adicionar info de parcelamento à observação
+        if parcelas > 1:
+            if observacao:
+                observacao += f" | Parcelado em {parcelas}x"
+            else:
+                observacao = f"Parcelado em {parcelas}x"
         
         sucesso, msg, venda_id = self.vendas.registrar_venda(
             cliente_id=cliente_id,
@@ -407,17 +603,33 @@ class VendasPage:
             UIComponents.show_success_message(msg)
             AccessibilityManager.announce_message(f"Venda #{venda_id} finalizada com sucesso")
             
-            # Limpar carrinho e cliente
+            # Registrar ajuste no log de auditoria
+            if config["tipo_ajuste"] != "SEM AJUSTE":
+                audit = AuditLog(self.db)
+                audit.registrar(
+                    st.session_state.usuario_login,
+                    "VENDAS",
+                    "Ajuste de preço aplicado",
+                    f"Venda #{venda_id} - {config['tipo_ajuste']}: {config.get('motivo', '')} - Original: R$ {subtotal:.2f} → Final: R$ {valor_final:.2f}"
+                )
+            
+            # Limpar carrinho, cliente e configurações
             st.session_state[self._carrinho_key] = []
             st.session_state[self._cliente_selecionado_key] = None
+            st.session_state[self._config_ajuste_key] = {
+                "tipo_ajuste": "SEM AJUSTE",
+                "percentual": 0,
+                "valor_fixo": 0,
+                "motivo": ""
+            }
             
             # Mostrar resumo da venda
-            self._mostrar_comprovante(venda_id)
+            self._mostrar_comprovante(venda_id, config, subtotal, valor_final)
         else:
             UIComponents.show_error_message(msg)
     
-    def _mostrar_comprovante(self, venda_id: int):
-        """Mostra comprovante da venda"""
+    def _mostrar_comprovante(self, venda_id: int, config: dict, subtotal: float, valor_final: float):
+        """Mostra comprovante da venda com informações de ajuste"""
         with st.expander("🧾 Comprovante da Venda", expanded=True):
             detalhes = self.vendas.detalhes_venda(venda_id)
             
@@ -431,21 +643,34 @@ class VendasPage:
                 **Data:** {Formatters.formatar_data_hora(venda['data_venda'])}
                 **Cliente:** {venda.get('cliente_nome', 'Não identificado')}
                 **Forma de pagamento:** {venda['forma_pagamento']}
-                
-                **Itens:**
                 """)
+                
+                if config["tipo_ajuste"] != "SEM AJUSTE":
+                    if valor_final < subtotal:
+                        st.success(f"**Desconto aplicado:** {config['tipo_ajuste']} - {config.get('motivo', '')}")
+                    else:
+                        st.warning(f"**Acréscimo aplicado:** {config['tipo_ajuste']} - {config.get('motivo', '')}")
+                
+                st.markdown("**Itens:**")
                 
                 for item in itens:
                     st.markdown(f"""
                     - {item['quantidade']}x {item['produto_nome']} - R$ {item['preco_unitario']:,.2f} = R$ {item['quantidade'] * item['preco_unitario']:,.2f}
                     """.replace(",", "X").replace(".", ",").replace("X", "."))
                 
-                st.markdown(f"""
-                ---
-                **Total:** R$ {venda['valor_total']:,.2f}
+                if config["tipo_ajuste"] != "SEM AJUSTE":
+                    st.markdown(f"""
+                    ---
+                    **Subtotal:** R$ {subtotal:,.2f}
+                    **Valor final:** R$ {valor_final:,.2f}
+                    """.replace(",", "X").replace(".", ",").replace("X", "."))
+                else:
+                    st.markdown(f"""
+                    ---
+                    **Total:** R$ {venda['valor_total']:,.2f}
+                    """.replace(",", "X").replace(".", ",").replace("X", "."))
                 
-                *Obrigado pela preferência!*
-                """.replace(",", "X").replace(".", ",").replace("X", "."))
+                st.markdown("*Obrigado pela preferência!*")
     
     def _render_venda_cliente(self):
         """Renderiza venda para cliente específico"""
@@ -528,7 +753,7 @@ class VendasPage:
                 # Finalização
                 forma_pagamento = st.selectbox(
                     "Forma de pagamento:",
-                    ["Dinheiro", "Cartão de Crédito", "Cartão de Débito", "PIX", "Transferência"],
+                    ["Dinheiro", "PIX", "Cartão de Débito", "Cartão de Crédito", "Transferência"],
                     key="forma_pag_cliente"
                 )
                 
@@ -595,7 +820,7 @@ class VendasPage:
         with col3:
             filtro_pagamento = st.selectbox(
                 "Forma de pagamento:",
-                ["Todas", "Dinheiro", "Cartão de Crédito", "Cartão de Débito", "PIX"],
+                ["Todas", "Dinheiro", "PIX", "Cartão de Débito", "Cartão de Crédito", "Transferência"],
                 key="filtro_pagamento"
             )
         
