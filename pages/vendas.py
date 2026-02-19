@@ -358,6 +358,7 @@ class VendasPage:
         
         carrinho = st.session_state[self._carrinho_key]
         if not carrinho:
+            st.info("Adicione produtos ao carrinho para ajustar preços.")
             return
         
         # Calcular subtotal atual
@@ -448,11 +449,16 @@ class VendasPage:
             st.metric("Valor com acréscimo", f"R$ {valor_ajustado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), delta=f"+{percentual_equiv:.1f}%")
             
         elif tipo_ajuste == "VALOR MANUAL":
+            # CORREÇÃO: Garantir que o valor inicial seja pelo menos o min_value
+            valor_inicial = float(config.get("valor_fixo", subtotal))
+            if valor_inicial < 0.01:
+                valor_inicial = subtotal if subtotal >= 0.01 else 0.01
+            
             valor_manual = st.number_input(
                 "Valor final da venda (R$):",
-                min_value=0.01,
-                max_value=subtotal * 3,
-                value=float(config.get("valor_fixo", subtotal)),
+                min_value=0.01,  # Mínimo de 1 centavo
+                max_value=subtotal * 3 if subtotal > 0 else 10000.0,
+                value=valor_inicial,
                 step=1.0,
                 format="%.2f",
                 key="valor_manual"
@@ -478,7 +484,7 @@ class VendasPage:
         # Salvar configuração
         st.session_state[self._config_ajuste_key] = config
         st.session_state[self._valor_ajustado_key] = valor_ajustado
-    
+        
     def _render_resumo_venda(self):
         """Renderiza resumo da venda"""
         st.markdown("### 📊 Resumo")
@@ -975,3 +981,4 @@ class VendasPage:
                 return date(hoje.year, hoje.month - 1, 1), date(hoje.year, hoje.month, 1) - timedelta(days=1)
         else:
             return hoje - timedelta(days=30), hoje
+
