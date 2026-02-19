@@ -95,7 +95,7 @@ class ProdutividadePage:
     def _gerar_relatorio(self, data_inicio, data_fim, incluir_inativos):
         """Gera o relatório de produtividade"""
         
-        # Query para dados de produtividade - CORRIGIDA (usando login como identificador único)
+        # CORREÇÃO: Query corrigida - usando u.login para juntar com vendas
         query = """
             SELECT 
                 u.nome as vendedor,
@@ -109,7 +109,7 @@ class ProdutividadePage:
                 MIN(v.data_venda) as primeira_venda,
                 MAX(v.data_venda) as ultima_venda
             FROM usuarios u
-            LEFT JOIN vendas v ON u.nome = v.usuario_registro 
+            LEFT JOIN vendas v ON u.login = v.usuario_registro 
                 AND date(v.data_venda) BETWEEN ? AND ?
             LEFT JOIN itens_venda i ON v.id = i.venda_id
             WHERE u.ativo = 1
@@ -240,7 +240,7 @@ class ProdutividadePage:
                 if vendedor_selecionado:
                     vendedor_data = df_ranking[df_ranking['vendedor'] == vendedor_selecionado].iloc[0]
 
-                    # Detalhamento das vendas do vendedor
+                    # Detalhamento das vendas do vendedor - CORREÇÃO: usar login
                     query_detalhe = """
                         SELECT 
                             v.id,
