@@ -269,9 +269,6 @@ class ElectroGestApp:
             "page_gerenciar": 1,
             "page_gerenciar_vendas": 1,
             "senha_alterada": False,
-            "high_contrast": False,
-            "large_text": False,
-            "colorblind_mode": False,
         }
         
         for key, value in defaults.items():
@@ -287,7 +284,7 @@ class ElectroGestApp:
             st.warning(f"Não foi possível injetar estilos: {str(e)}")
     
     def _render_sidebar(self):
-        """Renderiza menu lateral de navegação apenas para usuários logados - NOVO DESIGN"""
+        """Renderiza menu lateral de navegação apenas para usuários logados"""
         if not st.session_state.get('logado', False):
             return
         
@@ -295,7 +292,7 @@ class ElectroGestApp:
         <style>
             [data-testid="stSidebar"] { display: block !important; }
             
-            /* ESTILOS COMPACTOS DO MENU - IGUAL AO NASST */
+            /* ESTILOS COMPACTOS DO MENU */
             [data-testid="stSidebar"] {
                 padding-top: 0.5rem !important;
                 width: 250px !important;
@@ -347,23 +344,6 @@ class ElectroGestApp:
         """, unsafe_allow_html=True)
         
         with st.sidebar:
-            # Toggle de alto contraste
-            if 'high_contrast' not in st.session_state:
-                st.session_state.high_contrast = False
-            
-            col1, col2 = st.columns([1, 10])
-            with col1:
-                if st.button(
-                    "👁️" + (" (AC)" if st.session_state.high_contrast else ""),
-                    help="Alternar alto contraste",
-                    key="contrast_toggle"
-                ):
-                    st.session_state.high_contrast = not st.session_state.high_contrast
-                    st.rerun()
-            
-            st.markdown("---")
-            
-            # Título do menu
             st.markdown("### 📍 Menu")
             
             # Itens do menu principal
