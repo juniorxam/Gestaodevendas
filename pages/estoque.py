@@ -222,6 +222,10 @@ class EstoquePage:
             with st.spinner("Gerando relatório..."):
                 relatorio = self.estoque.get_relatorio_estoque()
                 
+                # Garantir que os dados estão no formato correto
+                if 'data_geracao' not in relatorio:
+                    relatorio['data_geracao'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                
                 try:
                     pdf_bytes = RelatorioPDFService.gerar_relatorio_estoque_pdf(
                         CONFIG.logo_path,
@@ -235,8 +239,14 @@ class EstoquePage:
                         mime="application/pdf",
                         key="download_relatorio_pdf"
                     )
+                    
+                    st.success("✅ PDF gerado com sucesso!")
+                    
                 except Exception as e:
                     UIComponents.show_error_message(f"Erro ao gerar PDF: {str(e)}")
+                    # Log para debug
+                    import traceback
+                    st.error(traceback.format_exc())
     
     def _render_entrada(self):
         """Renderiza formulário de entrada de estoque"""
